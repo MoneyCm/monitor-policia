@@ -124,10 +124,6 @@ def main():
     con_cambio = [a for a in unicos if a["nombre"] in previos and
                   a["fecha"] != previos[a["nombre"]].get("fecha","")]
 
-import os
-
-hay_cambios = (len(nuevos) + len(con_cambio)) > 0
-    f.write(f"hay_cambios={'true' if hay_cambios else 'false'}\n")
     sin_cambio = len(unicos) - len(nuevos) - len(con_cambio)
 
     import os as _os
