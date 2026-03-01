@@ -127,11 +127,14 @@ def main():
 import os
 
 hay_cambios = (len(nuevos) + len(con_cambio)) > 0
-with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
     f.write(f"hay_cambios={'true' if hay_cambios else 'false'}\n")
     sin_cambio = len(unicos) - len(nuevos) - len(con_cambio)
-    print(f"   Nuevos: {len(nuevos)}  |  Actualizados: {len(con_cambio)}  |  Sin cambios: {sin_cambio}")
 
+    import os as _os
+    _hay = (len(nuevos) + len(con_cambio)) > 0
+    _out = _os.environ.get('GITHUB_OUTPUT', '/dev/null')
+    open(_out, 'a', encoding='utf-8').write('hay_cambios=' + str(_hay).lower() + chr(10))
+    print(f"   Nuevos: {len(nuevos)}  |  Actualizados: {len(con_cambio)}  |  Sin cambios: {sin_cambio}")
     para_descargar = (nuevos + con_cambio)[:42]  # todos si hace falta
 
     # FASE 3: descargar
