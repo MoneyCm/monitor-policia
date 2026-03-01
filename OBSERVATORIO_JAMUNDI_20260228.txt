@@ -1,0 +1,109 @@
+OBSERVATORIO DEL DELITO - MUNICIPIO DE JAMUNDÍ, VALLE DEL CAUCA
+Reporte generado: 28/02/2026
+Fuente: Datos nacionales filtrados para Jamundí (cod_muni=76364)
+Herramienta: OpenClaw + Python/pandas
+======================================================================
+
+📍 CONTEXTO: JAMUNDÍ, VALLE DEL CAUCA
+----------------------------------------------------------------------
+
+• Código DANE: 76364 | Departamento: Valle del Cauca (76)
+• Ubicación: Sur del Valle, área metropolitana de Cali
+• Población: ~150.000 hab. | Característica: Corredor Cali-Popayán
+• Retos: Movilidad delictiva, microtráfico, presencia de grupos armados
+
+📥 FILTRADO DE DATOS NACIONALES → JAMUNDÍ
+----------------------------------------------------------------------
+
+HOMICIDIO INTENCIONAL:
+  • Registros nacionales: 335,698
+  • Filtro aplicado: municipio LIKE '%JAMUNDI%' OR cod_muni = 76364
+  • ✅ Registros de Jamundí: 2,004 (0.597%)
+
+SECUESTRO:
+  • Registros nacionales: 10,083
+  • Filtro aplicado: municipio LIKE '%JAMUNDI%' OR cod_muni = 76364
+  • ✅ Registros de Jamundí: 33 (0.327%)
+
+📊 TOTAL REGISTROS DE JAMUNDÍ ANALIZADOS: 2,037
+
+📅 TENDENCIAS TEMPORALES - JAMUNDÍ
+----------------------------------------------------------------------
+
+HOMICIDIO INTENCIONAL en Jamundí:
+  • Período: 2003 - 2026
+  • Registros con fecha: 2,004
+  • Tendencia: 📉 BAJA (-81.8%)
+  • Meses con más casos: Diciembre, Enero, Mayo
+  • Fechas con picos:
+    - 2004-08-30: 7 casos
+    - 2020-01-16: 7 casos
+    - 2018-04-14: 6 casos
+
+SECUESTRO en Jamundí:
+  • Período: 2005 - 2025
+  • Registros con fecha: 33
+  • Tendencia: 📈 ALZA (+50.0%)
+  • Meses con más casos: Septiembre, Mayo, Octubre
+  • Fechas con picos:
+    - 2009-10-04: 2 casos
+    - 2025-05-03: 2 casos
+    - 2023-06-02: 2 casos
+
+🗺️ DISTRIBUCIÓN INTRA-MUNICIPAL - JAMUNDÍ
+----------------------------------------------------------------------
+
+HOMICIDIO INTENCIONAL - TOP ZONAS EN JAMUNDÍ:
+  1. URBANA                         1160 ███████████ 57.9%
+  2. RURAL                           844 ████████ 42.1%
+
+👥 CARACTERIZACIÓN DE CASOS - JAMUNDÍ
+----------------------------------------------------------------------
+
+HOMICIDIO INTENCIONAL - Por sexo:
+  • MASCULINO: 92.5%
+  • FEMENINO: 7.5%
+
+SECUESTRO - Modalidades:
+  • ARTICULO 169. SECUESTRO EXTORSIVO: 78.8%
+  • ARTICULO 168. SECUESTRO SIMPLE: 21.2%
+
+⚠️ INDICADORES DE RIESGO - JAMUNDÍ
+----------------------------------------------------------------------
+• SECUESTRO: Picos agudos (2 casos en un día)
+• SECUESTRO: Estacionalidad en Septiembre (15.2% de casos)
+
+🎯 RECOMENDACIONES - CONCEJO DE SEGURIDAD JAMUNDÍ
+----------------------------------------------------------------------
+
+1. VIGILANCIA DINÁMICA
+   • Patrullaje preventivo en fechas con picos históricos identificados
+   • Coordinación con CAI y cuadrantes de Policía para rotación inteligente
+
+2. ENFOQUE TERRITORIAL
+   • Intervenciones focalizadas en zonas/barrios con mayor incidencia
+   • Trabajo con Juntas de Acción Comunal para prevención comunitaria
+
+3. CORREDOR ESTRATÉGICO CALI-JAMUNDÍ-POPAYÁN
+   • Controles en vías de acceso (prevención de movilidad delictiva)
+   • Operativos conjuntos con municipios vecinos del Valle
+
+4. PREVENCIÓN SITUACIONAL
+   • Mejorar iluminación y vigilancia en puntos críticos
+   • Promover canales de denuncia anónima municipales
+
+5. MONITOREO CONTINUO
+   • Actualizar análisis mensualmente para detectar cambios de tendencia
+   • Cruzar con datos de captura y judicialización local
+
+6. COORDINACIÓN INTERINSTITUCIONAL
+   • Socializar hallazgos con Policía, Fiscalía, Personería y Gobernación del Valle
+   • Alinear con Plan de Desarrollo Municipal y PESV de Jamundí
+
+⚠️ LIMITACIONES
+----------------------------------------------------------------------
+
+• Datos filtrados por nombre/código de municipio; posibles falsos negativos si el formato varía
+• Registros reflejan ocurrencias reportadas, no necesariamente casos judicializados
+• Ausencia de columnas clave limita análisis de perfilización completa
+• Se recomienda validar con fuentes locales: Policía, Inspección, Personería de Jamundí

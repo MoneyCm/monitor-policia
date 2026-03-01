@@ -1,0 +1,90 @@
+[
+  {
+    "archivo": "HOMICIDIO INTENCIONAL.xlsx",
+    "total_original": 335698,
+    "total_jamundi": 2004,
+    "columnas": [
+      "fecha_hecho",
+      "cod_depto",
+      "departamento",
+      "cod_muni",
+      "municipio",
+      "zona",
+      "sexo",
+      "victimas"
+    ],
+    "años": [
+      2003,
+      2004,
+      2005,
+      2006,
+      2007,
+      2008,
+      2009,
+      2010,
+      2011,
+      2012,
+      2013,
+      2014,
+      2015,
+      2016,
+      2017,
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025,
+      2026
+    ],
+    "tendencia": "📉 BAJA",
+    "zona_dist": {
+      "URBANA": 1160,
+      "RURAL": 844
+    },
+    "error": null
+  },
+  {
+    "archivo": "SECUESTRO.xlsx",
+    "total_original": 10083,
+    "total_jamundi": 33,
+    "columnas": [
+      "fecha_hecho",
+      "cod_depto",
+      "departamento",
+      "cod_muni",
+      "municipio",
+      "descripcion conducta",
+      "cantidad"
+    ],
+    "años": [
+      2005,
+      2007,
+      2008,
+      2009,
+      2014,
+      2017,
+      2018,
+      2019,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "tendencia": "📈 ALZA",
+    "zona_dist": {},
+    "error": null
+  },
+  {
+    "archivo": "~$HOMICIDIO INTENCIONAL.xlsx",
+    "total_original": 0,
+    "total_jamundi": 0,
+    "columnas": [],
+    "años": [],
+    "tendencia": "N/A",
+    "zona_dist": {},
+    "error": "[Errno 13] Permission denied: 'C:\\\\Users\\\\Usuario\\\\.openclaw\\\\workspace\\\\~$HOMICIDIO INTENCIONAL.xlsx'"
+  }
+]

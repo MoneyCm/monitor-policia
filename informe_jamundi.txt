@@ -1,0 +1,67 @@
+INFORME SISC - CONCEJO DE SEGURIDAD JAMUNDÍ
+Fecha: 28/02/2026
+==================================================
+
+HOMICIDIO INTENCIONAL
+------------------------------
+📋 Columnas: ['fecha_hecho', 'cod_depto', 'departamento', 'cod_muni', 'municipio', 'zona', 'sexo', 'victimas']
+📈 Total registros: 334537
+📅 Años disponibles: [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+📊 Rango: 2003 - 2025
+
+📊 TOP 5 FECHAS CON MÁS REGISTROS:
+fecha_hecho
+2003-01-01    144
+2004-01-01    137
+2005-01-01    132
+2015-01-01    125
+2009-01-01    121
+
+📍 TOP 5 POR MUNICIPIO:
+municipio
+CALI            32666
+BOGOTA D.C.     29440
+MEDELLIN        17879
+BARRANQUILLA     8176
+CUCUTA           7141
+
+==================================================
+
+SECUESTRO
+------------------------------
+📋 Columnas: ['fecha_hecho', 'cod_depto', 'departamento', 'cod_muni', 'municipio', 'descripcion conducta', 'cantidad']
+📈 Total registros: 10083
+📅 Años disponibles: [2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+📊 Rango: 2003 - 2025
+
+📊 TOP 5 FECHAS CON MÁS REGISTROS:
+fecha_hecho
+2003-07-21    34
+2008-03-20    24
+2003-05-31    23
+2025-03-06    22
+2025-09-07    22
+
+📍 TOP 5 POR MUNICIPIO:
+municipio
+BOGOTA D.C.      882
+CALI             326
+MEDELLIN         284
+VILLAVICENCIO    261
+CUCUTA           154
+
+==================================================
+📝 TEXTO PARA PRESENTACIÓN EN EL CONCEJO (1 min):
+==================================================
+
+"Buenas tardes, miembros del Concejo de Seguridad.
+
+Presento el resumen de delitos en Jamundí (años 2003-2025):
+
+1. HOMICIDIOS: Se registraron múltiples casos en fechas específicas que requieren atención focalizada.
+
+2. SECUESTROS: También se presentan patrones por fecha que debemos analizar.
+
+Recomendación: Incrementar patrullaje en las fechas y zonas con mayor incidencia, y fortalecer la coordinación entre fuerzas de seguridad.
+
+Gracias."

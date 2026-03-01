@@ -1,0 +1,35 @@
+OBSERVATORIO DEL DELITO - JAMUNDÍ, VALLE DEL CAUCA
+Reporte generado: 28/02/2026 19:47
+Archivos analizados: 3 | Con datos de Jamundí: 2
+======================================================================
+
+📋 RESUMEN EJECUTIVO
+----------------------------------------------------------------------
+• Total de registros de Jamundí (todos los delitos): 2,037
+• Archivos con información de Jamundí: 2
+
+📊 DETALLE POR TIPO DE DELITO
+----------------------------------------------------------------------
+Archivo                                       Total Jamundí Años            Tendencia 
+----------------------------------------------------------------------
+HOMICIDIO INTENCIONAL                                2,004 2003-2026       📉 BAJA    
+SECUESTRO                                               33 2005-2025       📈 ALZA    
+
+🔝 TOP 10 DELITOS CON MÁS REGISTROS EN JAMUNDÍ
+----------------------------------------------------------------------
+1. HOMICIDIO INTENCIONAL: 2,004 registros
+2. SECUESTRO: 33 registros
+
+🗺️ DISTRIBUCIÓN POR ZONA (consolidado)
+----------------------------------------------------------------------
+• URBANA                1,160 ████████████████████████████ 56.9%
+• RURAL                   844 ████████████████████ 41.4%
+
+🎯 RECOMENDACIONES PARA EL CONCEJO DE SEGURIDAD
+----------------------------------------------------------------------
+
+1. PRIORIZACIÓN: Enfocar recursos en los delitos TOP 5 con mayor incidencia en Jamundí.
+2. TEMPORALIDAD: Reforzar operativos en años/meses con tendencia al alza identificada.
+3. TERRITORIALIDAD: Si hay datos de zona, focalizar intervenciones en áreas críticas.
+4. MONITOREO: Ejecutar este análisis mensualmente para detectar cambios de tendencia.
+5. COORDINACIÓN: Socializar hallazgos con Policía, Fiscalía y Gobernación del Valle.
