@@ -123,6 +123,12 @@ def main():
     nuevos     = [a for a in unicos if a["nombre"] not in previos]
     con_cambio = [a for a in unicos if a["nombre"] in previos and
                   a["fecha"] != previos[a["nombre"]].get("fecha","")]
+
+import os
+
+hay_cambios = (len(nuevos) + len(con_cambio)) > 0
+with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+    f.write(f"hay_cambios={'true' if hay_cambios else 'false'}\n")
     sin_cambio = len(unicos) - len(nuevos) - len(con_cambio)
     print(f"   Nuevos: {len(nuevos)}  |  Actualizados: {len(con_cambio)}  |  Sin cambios: {sin_cambio}")
 
