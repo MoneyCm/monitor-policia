@@ -176,6 +176,15 @@ with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write("\n")
         print(f"\n   Resumen guardado: {DOWNLOAD_DIR}/resumen_jamundi.txt")
 
+
+    # Output para GitHub Actions
+    import os
+    hay_cambios_bool = (len(nuevos) + len(con_cambio)) > 0
+    gh_out = os.environ.get('GITHUB_OUTPUT', '')
+    if gh_out:
+        with open(gh_out, 'a', encoding='utf-8') as _f:
+            _f.write(f'hay_cambios={str(hay_cambios_bool).lower()}')
+
     # FASE 5: guardar estado
     print("\nFASE 5: Guardando estado...")
     estado["ultima_revision"] = datetime.now().isoformat()
