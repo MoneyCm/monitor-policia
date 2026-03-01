@@ -2,7 +2,7 @@
 
 on:
   schedule:
-    - cron: '0 13 * * *'
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout repositorio
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Restaurar estado anterior
@@ -22,14 +22,14 @@ jobs:
           restore-keys: |
             mindefensa-state-
 
-      - name: Instalar Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Instalar dependencias
         run: |
-          pip install playwright requests
+          pip install -r requirements.txt
           playwright install chromium
           playwright install-deps chromium
 
@@ -45,8 +45,8 @@ jobs:
         run: python notificar.py
 
       - name: Guardar estado actualizado
-        uses: actions/cache/save@v4
         if: always()
+        uses: actions/cache/save@v4
         with:
           path: mindefensa_state.json
           key: mindefensa-state-${{ github.run_id }}
