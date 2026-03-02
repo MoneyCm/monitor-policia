@@ -131,7 +131,13 @@ def main():
     _out = _os.environ.get('GITHUB_OUTPUT', '/dev/null')
     open(_out, 'a', encoding='utf-8').write('hay_cambios=' + str(_hay).lower() + chr(10))
     print(f"   Nuevos: {len(nuevos)}  |  Actualizados: {len(con_cambio)}  |  Sin cambios: {sin_cambio}")
-    para_descargar = (nuevos + con_cambio)[:42]  # todos si hace falta
+    import os as _os
+    force_all = _os.environ.get("FORCE_DOWNLOAD_ALL", "").lower() in ("1","true","yes")
+    para_descargar = (nuevos + con_cambio)[:42]  # cambios
+    if force_all:
+        # Para reportes programados / manuales: descargar todo aunque no haya cambios
+        para_descargar = unicos
+
 
     # FASE 3: descargar
     descargados = 0
