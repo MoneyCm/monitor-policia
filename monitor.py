@@ -136,7 +136,8 @@ def main():
     para_descargar = (nuevos + con_cambio)[:42]  # cambios
     if force_all:
         # Para reportes programados / manuales: descargar todo aunque no haya cambios
-        para_descargar = unicos
+        if force_all:
+            para_descargar = unicos
 
 
     # FASE 3: descargar
