@@ -60,7 +60,7 @@ def leer_datos():
             continue
         try:
             df = pd.read_excel(ruta, engine='calamine')
-            df['COD_MUNI'] = __pd.to_numeric(df['COD_MUNI'], errors='coerce')
+            df['COD_MUNI'] = pd.to_numeric(df['COD_MUNI'], errors='coerce')
             df = df[df['COD_MUNI'] == COD_MUNI].copy()
             col_fecha = 'FECHA_HECHO' if 'FECHA_HECHO' in df.columns else 'FECHA HECHO'
             df['FECHA_HECHO'] = pd.to_datetime(df[col_fecha], errors='coerce')
@@ -69,7 +69,7 @@ def leer_datos():
             raw = df[cfg['col']]
             if raw.dtype == object:
                 raw = raw.astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
-            df['col_cantidad'] = __pd.to_numeric(raw, errors='coerce').fillna(0)
+            df['col_cantidad'] = pd.to_numeric(raw, errors='coerce').fillna(0)
             datos[nombre] = df
             print(f"  [OK] {nombre}: {len(df)} filas")
         except Exception as e:
