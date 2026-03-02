@@ -1,0 +1,111 @@
+"""
+notificar_policia.py — Envío de email con reporte PDF Policía Nacional
+Uso: python notificar_policia.py [cambio|planificacion|consejo]
+"""
+
+import os
+import sys
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from datetime import datetime
+from pathlib import Path
+
+GMAIL_USER = os.environ["GMAIL_USER"]
+GMAIL_PASS = os.environ["GMAIL_PASS"]
+EMAIL_DEST = os.environ["EMAIL_DEST"]
+PDF_PATH   = "reporte_policia.pdf"
+
+MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+            "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+
+def enviar(asunto: str, cuerpo_html: str):
+    msg = MIMEMultipart("mixed")
+    msg["From"]    = GMAIL_USER
+    msg["To"]      = EMAIL_DEST
+    msg["Subject"] = asunto
+
+    msg.attach(MIMEText(cuerpo_html, "html", "utf-8"))
+
+    if Path(PDF_PATH).exists():
+        with open(PDF_PATH, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition",
+                        f'attachment; filename="reporte_policia.pdf"')
+        msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        s.login(GMAIL_USER, GMAIL_PASS)
+        s.sendmail(GMAIL_USER, EMAIL_DEST, msg.as_string())
+
+    print(f"✅ Email enviado: {asunto}")
+
+
+def html_base(titulo: str, cuerpo: str) -> str:
+    return f"""
+    <html><body style="font-family:Arial,sans-serif;color:#1A1A2E;max-width:640px;margin:auto">
+      <div style="background:#281FD0;padding:18px 24px;border-bottom:4px solid #FFE000">
+        <h2 style="color:white;margin:0;font-size:16px">🚔 OBSERVATORIO DEL DELITO — POLICÍA NACIONAL</h2>
+        <p style="color:#c0c8ff;margin:4px 0 0;font-size:12px">Alcaldía de Jamundí · Secretaría de Seguridad y Convivencia</p>
+      </div>
+      <div style="padding:20px 24px;background:#f9f9fd">
+        <h3 style="color:#281FD0">{titulo}</h3>
+        {cuerpo}
+      </div>
+      <div style="background:#281FD0;padding:10px 24px;border-top:3px solid #FFE000">
+        <p style="color:#c0c8ff;font-size:11px;margin:0">
+          Fuente: Policía Nacional / DIJIN · Municipio Jamundí (76364) ·
+          Generado automáticamente vía GitHub Actions
+        </p>
+      </div>
+    </body></html>
+    """
+
+
+def main():
+    tipo = sys.argv[1] if len(sys.argv) > 1 else "cambio"
+    hoy  = datetime.now()
+    mes  = MESES_ES[hoy.month]
+
+    if tipo == "cambio":
+        asunto = f"🚨 Cambio detectado — Datos Policía Nacional · {hoy.strftime('%d/%m/%Y %H:%M')}"
+        cuerpo = """
+        <p>Se detectaron <strong>nuevos datos o actualizaciones</strong> en la estadística
+        delictiva de la Policía Nacional para Jamundí.</p>
+        <p>El reporte actualizado se adjunta a este correo.</p>
+        <p style="color:#C0392B"><strong>Revise los indicadores que presentan variación.</strong></p>
+        """
+
+    elif tipo == "planificacion":
+        asunto = f"📋 Reporte Policía — Reunión de Planificación · {mes} {hoy.year}"
+        cuerpo = f"""
+        <p>Adjunto el <strong>Boletín de Estadística Delictiva (Policía Nacional)</strong>
+        correspondiente a <strong>{mes} {hoy.year}</strong>,
+        preparado para la reunión de planificación del lunes.</p>
+        <p>Este reporte incluye comparativo anual y tendencia de los principales delitos
+        registrados por la Policía Nacional en el municipio de Jamundí.</p>
+        """
+
+    elif tipo == "consejo":
+        asunto = f"🛡️ Reporte Policía — Consejo de Seguridad · {mes} {hoy.year}"
+        cuerpo = f"""
+        <p>Adjunto el <strong>Boletín de Estadística Delictiva (Policía Nacional)</strong>
+        correspondiente a <strong>{mes} {hoy.year}</strong>,
+        preparado para el Consejo de Seguridad del viernes.</p>
+        <p>Este reporte complementa los datos del Ministerio de Defensa con la
+        perspectiva operativa de la Policía Nacional en Jamundí.</p>
+        """
+
+    else:
+        asunto = f"📊 Reporte Policía Nacional — {mes} {hoy.year}"
+        cuerpo = "<p>Adjunto el reporte de estadística delictiva (Policía Nacional).</p>"
+
+    enviar(asunto, html_base(asunto, cuerpo))
+
+
+if __name__ == "__main__":
+    main()
