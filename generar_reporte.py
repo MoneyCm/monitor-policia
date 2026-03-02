@@ -78,6 +78,23 @@ def total_anio(df, anio, hasta_mes=None):
         sub = sub[sub['MES'] <= hasta_mes]
     return int(sub['col_cantidad'].sum())
 
+
+def calcular_variacion_estado(v_prev: int, v_act: int):
+    # Manejo de base cero (evita 0.0% incorrecto)
+    if v_prev == 0 and v_act == 0:
+        return "0.0%", "IGUAL"
+    if v_prev == 0 and v_act > 0:
+        return "N/A (base 0)", "APARECE"
+    if v_prev > 0 and v_act == 0:
+        return "-100.0%", "BAJA"
+
+    var = ((v_act - v_prev) / v_prev) * 100.0
+    if var > 0:
+        return f"+{var:.1f}%", "SUBE"
+    if var < 0:
+        return f"{var:.1f}%", "BAJA"
+    return "0.0%", "IGUAL"
+
 def serie_mensual(df, anio):
     sub = df[df['ANIO'] == anio].groupby('MES')['col_cantidad'].sum()
     return [int(sub.get(m, 0)) for m in range(1, 13)]
@@ -227,7 +244,7 @@ def generar_pdf(datos, ruta_salida):
         delta = act - ant
         pct   = (delta / ant * 100) if ant > 0 else 0
         signo = "+" if pct > 0 else ""
-        flecha = "SUBE" if delta > 0 else ("BAJA" if delta < 0 else "IGUAL")
+        var_txt, flecha = calcular_variacion_estado(ant, act)
         clr_v  = ROJO_ALT if delta > 0 else (VERDE if delta < 0 else GRIS)
         filas.append([
             TD(nombre),
