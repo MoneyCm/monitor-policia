@@ -83,6 +83,28 @@ def total_anio(df, anio, hasta_mes=None):
     return float(sub['col_cantidad'].sum())
 
 
+
+def fmt_val(nombre, v):
+    # Normaliza NaN/None
+    try:
+        if v is None:
+            return "0"
+    except Exception:
+        pass
+
+    # Incautaciones (kg): 3 decimales, sin ruido float
+    if "Incautacion" in nombre or "Incautación" in nombre:
+        try:
+            return f"{float(v):.3f}".rstrip("0").rstrip(".")
+        except Exception:
+            return str(v)
+
+    # Resto (casos/víctimas): entero
+    try:
+        return f"{int(round(float(v)))}"
+    except Exception:
+        return str(v)
+
 def calcular_variacion_estado(v_prev: int, v_act: int):
     # Manejo de base cero (evita 0.0% incorrecto)
     if v_prev == 0 and v_act == 0:
@@ -252,8 +274,8 @@ def generar_pdf(datos, ruta_salida):
         clr_v  = ROJO_ALT if delta > 0 else (VERDE if delta < 0 else GRIS)
         filas.append([
             TD(nombre),
-            TD(str(ant), align=TA_CENTER),
-            TD(str(act), bold=True, align=TA_CENTER),
+            TD(fmt_val(nombre, ant), align=TA_CENTER),
+            TD(fmt_val(nombre, act), bold=True, align=TA_CENTER),
             TD(var_txt, clr=clr_v, align=TA_CENTER, bold=True),
             TD(flecha, clr=clr_v, align=TA_CENTER, bold=True),
         ])
