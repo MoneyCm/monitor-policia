@@ -64,7 +64,7 @@ def _read_excel_smart(path: Path, engine: str) -> pd.DataFrame:
     return pd.read_excel(path, engine=engine)
 
 def _safe_read_excel(path: Path) -> pd.DataFrame:
-    try: return _read_excel_smart(path, engine="calamine")
+    try: return _read_excel_smart(path, engine="openpyxl")
     except: return _read_excel_smart(path, engine="openpyxl")
 
 def descubrir_datasets():
@@ -73,7 +73,10 @@ def descubrir_datasets():
     archivos = list(base.glob("*.xlsx"))
     datasets = {}
     for arc in archivos:
-        nombre_limpio = re.sub(r"202\d(_\d)?", "", arc.stem).strip()
+        # Decodificar nombres (ej: %C3%B3 -> ó)
+        import urllib.parse
+        nombre_real = urllib.parse.unquote(arc.stem)
+        nombre_limpio = re.sub(r"202\d(_\d)?", "", nombre_real).strip()
         if nombre_limpio not in datasets: datasets[nombre_limpio] = []
         datasets[nombre_limpio].append(arc.name)
     return datasets
