@@ -2,83 +2,72 @@ name: Monitor Policía Nacional — Jamundí
 
 on:
   schedule:
-    # Cada 30 minutos para detección de cambios
+    # 1. Chequeo frecuente (cada 30 min) para detectar cambios al instante
     - cron: "*/30 * * * *"
-    # Lunes 6pm Colombia (Reunión planificación)
-    - cron: "0 23 * * 1"
-    # Viernes 6pm Colombia (Consejo seguridad)
-    - cron: "0 23 * * 5"
+    # 2. Ventana Martes 21:00 UTC (4:00 PM Col) para Planeación
+    - cron: "0 21 * * 2"
+    # 3. Ventana Viernes 21:00 UTC (4:00 PM Col) para Consejo
+    - cron: "0 21 * * 5"
 
-  workflow_dispatch:   # Disparo manual desde la web
+  workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
     steps:
       - name: Checkout repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Python 3.12
+      - name: Restaurar caché de Hash
+        uses: actions/cache@v4
+        with:
+          path: .last_hash
+          key: last-hash-policia-${{ github.run_id }}
+          restore-keys: |
+            last-hash-policia-
+
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Instalar dependencias
+        run: pip install requests pandas openpyxl python-calamine matplotlib reportlab
+
+      - name: Descargar y Procesar
         run: |
-          pip install --upgrade pip
-          pip install requests pandas openpyxl python-calamine \
-                      matplotlib reportlab
+          python descargar_policia.py
+          python generar_reporte_policia.py
 
-      - name: Descargar Excel (Detección Dinámica)
-        run: python descargar_policia.py
-
-      - name: Calcular hash de datos actuales
-        id: hash_actual
-        run: |
-          HASH=$(find policia_xlsx -name "*.xlsx" -exec md5sum {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "Hash actual: $HASH"
-
-      - name: Leer hash anterior
-        id: hash_anterior
-        run: |
-          if [ -f .last_hash ]; then
-            PREV=$(cat .last_hash)
-          else
-            PREV=""
-          fi
-          echo "hash=$PREV" >> $GITHUB_OUTPUT
-          echo "Hash anterior: $PREV"
-
-      - name: Generar reporte PDF
-        run: python generar_reporte_policia.py
-
-      - name: Guardar hash actual
-        run: echo "${{ steps.hash_actual.outputs.hash }}" > .last_hash
-
-      - name: Notificar si hay cambios o es programado
-        if: |
-          github.event_name == 'workflow_dispatch' ||
-          github.event.schedule == '0 23 * * 1' ||
-          github.event.schedule == '0 23 * * 5' ||
-          (steps.hash_actual.outputs.hash != steps.hash_anterior.outputs.hash && steps.hash_anterior.outputs.hash != '')
+      - name: Verificar cambios y notificar
+        id: check_changes
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
           EMAIL_DEST: ${{ secrets.EMAIL_DEST }}
         run: |
-          # Determinamos el tipo de notificación
-          TIPO="cambio"
-          if [[ "${{ github.event.schedule }}" == "0 23 * * 1" ]]; then TIPO="planificacion"; fi
-          if [[ "${{ github.event.schedule }}" == "0 23 * * 5" ]]; then TIPO="consejo"; fi
+          # Calcular hash actual de todos los archivos descargados
+          HASH_ACTUAL=$(find policia_xlsx -name "*.xlsx" -exec md5sum {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
           
-          python notificar_policia.py $TIPO
-
-      # Subir el PDF como artefacto para descarga manual desde GitHub
-      - name: Subir Reporte PDF
-        uses: actions/upload-artifact@v4
-        with:
-          name: reporte-policia-jamundi
-          path: reporte_policia.pdf
+          # Leer hash anterior si existe
+          if [ -f .last_hash ]; then HASH_PREVIO=$(cat .last_hash); else HASH_PREVIO=""; fi
+          
+          # SOLO SI HUBO CAMBIOS REALES EN LA INFORMACIÓN
+          if [ "$HASH_ACTUAL" != "$HASH_PREVIO" ]; then
+            echo "Detección: ¡Hay datos nuevos!"
+            echo "$HASH_ACTUAL" > .last_hash
+            
+            # Determinar tipo de correo según el momento (UTC)
+            # Martes 21:00 UTC -> Planeación
+            if [[ "${{ github.event.schedule }}" == "0 21 * * 2" ]]; then
+              python notificar_policia.py planificacion
+            # Viernes 21:00 UTC -> Consejo
+            elif [[ "${{ github.event.schedule }}" == "0 21 * * 5" ]]; then
+              python notificar_policia.py consejo
+            # Cualquier otro momento -> Cambio detectado
+            else
+              python notificar_policia.py cambio
+            fi
+          else
+            echo "La información no ha cambiado desde la última notificación. No se envía correo."
+          fi
