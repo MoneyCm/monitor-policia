@@ -1,74 +1,67 @@
-﻿name: Monitor MinDefensa
+name: Monitor Mindefensa — Jamundí
+
 on:
   schedule:
-    - cron: "*/15 * * * *"
-    - cron: "0 23 * * 2"
-    - cron: "0 23 * * 5"
+    # 1. Chequeo frecuente (cada 30 min)
+    - cron: "*/30 * * * *"
+    # 2. Ventana Martes 21:00 UTC (4:00 PM Col) para Planeación
+    - cron: "0 21 * * 2"
+    # 3. Ventana Viernes 21:00 UTC (4:00 PM Col) para Consejo
+    - cron: "0 21 * * 5"
+
   workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
+      - name: Checkout repositorio
         uses: actions/checkout@v4
 
-      - name: Restaurar estado anterior
+      - name: Restaurar caché de Datos
         uses: actions/cache@v4
         with:
-          path: mindefensa_state.json
-          key: mindefensa-state-${{ github.run_id }}
+          path: |
+            mindefensa_state.json
+            resumen_anterior_mindefensa.json
+          key: cache-mindefensa-${{ github.run_id }}
           restore-keys: |
-            mindefensa-state-
+            cache-mindefensa-
 
-      - name: Restaurar Excel descargados
-        uses: actions/cache@v4
-        with:
-          path: mindefensa_xlsx
-          key: mindefensa-xlsx-${{ github.run_id }}
-          restore-keys: |
-            mindefensa-xlsx-
-
-      - name: Setup Python
+      - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
-          playwright install chromium
-          playwright install-deps chromium
+          pip install requests pandas openpyxl python-calamine matplotlib reportlab playwright
+          npx playwright install chromium
 
-      - name: Ejecutar monitor
-        id: monitor
-        env:
-          FORCE_DOWNLOAD_ALL: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 23 * * 2' || github.event.schedule == '0 23 * * 5' }}
-        run: python monitor.py
+      - name: Monitorear y Procesar
+        run: |
+          python monitor.py
+          python generar_reporte.py
 
-      - name: Generar reporte PDF
-        if: steps.monitor.outputs.hay_cambios == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 23 * * 2' || github.event.schedule == '0 23 * * 5'
-        run: python generar_reporte.py
-
-      - name: Enviar correo con reporte
-        if: steps.monitor.outputs.hay_cambios == 'true' || github.event_name == 'workflow_dispatch' || github.event.schedule == '0 23 * * 2' || github.event.schedule == '0 23 * * 5'
+      - name: Verificar cambios y notificar
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python notificar.py
-
-      - name: Guardar estado actualizado
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: mindefensa_state.json
-          key: mindefensa-state-${{ github.run_id }}
-
-      - name: Guardar Excel descargados
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: mindefensa_xlsx
-          key: mindefensa-xlsx-${{ github.run_id }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+          EMAIL_DEST: ${{ secrets.EMAIL_DEST }}
+        run: |
+          # Solo notificar si el script principal detectó cambios (hay_cambios en GITHUB_OUTPUT)
+          # O si es una de las ventanas de las 4:00 PM
+          
+          # 1. Determinar tipo según el momento
+          TIPO="cambio"
+          if [[ "${{ github.event.schedule }}" == "0 21 * * 2" ]]; then TIPO="reunion"; fi
+          if [[ "${{ github.event.schedule }}" == "0 21 * * 5" ]]; then TIPO="consejo"; fi
+          
+          # 2. Notificar (el script notificar.py ya maneja si hay resumen_actual vs anterior)
+          # Solo enviamos si hay cambios reales o es ventana programada
+          # Para simplificar y asegurar que NO sea ruidoso, usamos la misma lógica que en policía:
+          
+          python notificar.py $TIPO
+          
+          # 3. Rotar resúmenes para la próxima vez
+          if [ -f resumen_actual_mindefensa.json ]; then cp resumen_actual_mindefensa.json resumen_anterior_mindefensa.json; fi

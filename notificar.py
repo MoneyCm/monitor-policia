@@ -1,130 +1,118 @@
-import smtplib, json, os, sys
-from email.mime.text import MIMEText
+"""
+notificar.py — Envío de correo con novedades de Mindefensa
+"""
+import smtplib, os, sys, json
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime
 from pathlib import Path
 
-CORREO = os.environ.get("GMAIL_USER")
-PASSWD = os.environ.get("GMAIL_APP_PASSWORD")
+# Configuración
+CORREO  = os.environ.get("GMAIL_USER")
+PASSWD  = os.environ.get("GMAIL_PASS")
+DESTINO = os.environ.get("EMAIL_DEST") or CORREO
 STATE_FILE  = Path("mindefensa_state.json")
 REPORTE_PDF = Path("reporte_observatorio.pdf")
+RESUMEN_ACT = Path("resumen_actual_mindefensa.json")
+RESUMEN_ANT = Path("resumen_anterior_mindefensa.json")
 
-MESES_ES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
-            'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 def tipo_envio():
-    """Determina el tipo de envío según el día de la semana."""
-    dia = datetime.now().weekday()  # 0=lunes, 1=martes, ... 4=viernes
-    if dia == 1:   # martes → previo reunión miércoles
-        return "reunion"
-    elif dia == 4: # viernes → previo consejo seguridad lunes
-        return "consejo"
-    else:
-        return "cambio"
+    t = sys.argv[1] if len(sys.argv) > 1 else "cambio"
+    return t.lower().strip()
 
 def asunto_y_titulo(tipo, fecha_hoy):
     if tipo == "reunion":
-        return (
-            f"📋 Boletín Seguridad — Reunión de Planeación {fecha_hoy}",
-            "Boletín previo a la Reunión de Planeación de Seguridad",
-            "Este boletín ha sido generado automáticamente para la reunión del miércoles."
-        )
-    elif tipo == "consejo":
-        return (
-            f"🔒 Boletín Seguridad — Consejo de Seguridad {fecha_hoy}",
-            "Boletín previo al Consejo Municipal de Seguridad",
-            "Este boletín ha sido generado automáticamente para el Consejo de Seguridad del lunes."
-        )
-    else:
-        return (
-            f"🔔 Actualización MinDefensa — {fecha_hoy}",
-            "Actualización detectada en datos de MinDefensa",
-            "Se detectaron cambios en los archivos de MinDefensa. Se adjunta el boletín actualizado."
-        )
+        return f"📋 Reunión Planeación — Mindefensa · {fecha_hoy}", "Boletín Preparatorio — Planeación", "Preparado para la reunión de los miércoles."
+    if tipo == "consejo":
+        return f"🛡️ Consejo de Seguridad — Mindefensa · {fecha_hoy}", "Boletín Consejo de Seguridad", "Consolidado estratégico para el Consejo de Seguridad."
+    return f"🚨 Cambio Detectado — Mindefensa · {fecha_hoy}", "Actualización de Datos Detectada", "Se han identificado nuevos archivos o cambios en el portal de Mindefensa."
+
+def obtener_novedades_html():
+    if not RESUMEN_ACT.exists(): return ""
+    with open(RESUMEN_ACT, "r", encoding="utf-8") as f: act = json.load(f)
+    ant = {}
+    if RESUMEN_ANT.exists():
+        with open(RESUMEN_ANT, "r", encoding="utf-8") as f: ant = json.load(f)
+    
+    items = []
+    for d, v_act in act.items():
+        v_ant = ant.get(d, 0)
+        diff = v_act - v_ant
+        if diff > 0:
+            items.append(f"<li style='margin-bottom:4px'><b>{d}</b>: <span style='color:#C0392B'>+{int(diff)}</span> (Total: {int(v_act)})</li>")
+        elif diff < 0:
+            items.append(f"<li style='margin-bottom:4px'><b>{d}</b>: <span style='color:#2E7D32'>{int(diff)}</span> (Total: {int(v_act)})</li>")
+            
+    if not items: return "<p style='font-size:12px;color:#606175'><i>Sin cambios en los totales de delitos prioritarios.</i></p>"
+    return "<div style='background:#f9f9fb;border-left:4px solid #281FD0;padding:12px;margin:15px 0'><b style='font-size:13px;color:#281FD0'>Resumen de Novedades:</b><ul style='font-size:12px;color:#1A1A2E;margin:8px 0 0;padding-left:18px'>" + "".join(items) + "</ul></div>"
 
 def enviar_resumen():
     if not CORREO or not PASSWD:
-        print("No se encontraron los Secrets de GitHub. Omitiendo correo.")
+        print("Faltan credenciales GMAIL_USER / GMAIL_PASS")
         return
 
     estado = {}
     if STATE_FILE.exists():
-        with open(STATE_FILE, encoding="utf-8") as f:
-            estado = json.load(f)
+        with open(STATE_FILE, encoding="utf-8") as f: estado = json.load(f)
 
-    ultima   = estado.get("ultima_revision", "—")
-    total    = len(estado.get("archivos", {}))
-    nuevos   = estado.get("nuevos_ultimo", 0)
-    cambios  = estado.get("cambios_ultimo", 0)
+    ultima    = estado.get("ultima_revision", "—")
+    total     = len(estado.get("archivos", {}))
+    nuevos    = estado.get("nuevos_ultimo", 0)
+    cambios   = estado.get("cambios_ultimo", 0)
     fecha_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
-    mes_actual = MESES_ES[datetime.now().month]
-
+    
     tipo = tipo_envio()
     asunto, titulo, descripcion = asunto_y_titulo(tipo, fecha_hoy)
+    color_badge = {"reunion": "#FFB600", "consejo": "#C0392B", "cambio": "#281FD0"}.get(tipo, "#281FD0")
+    label_badge = {"reunion": "REUNIÓN PLANEACIÓN", "consejo": "CONSEJO SEGURIDAD", "cambio": "ACTUALIZACIÓN"}.get(tipo, "MONITOREO")
 
-    # Badge color según tipo
-    color_badge = {"reunion": "#FFB600", "consejo": "#C0392B", "cambio": "#281FD0"}[tipo]
-    label_badge = {"reunion": "REUNIÓN MIÉRCOLES", "consejo": "CONSEJO SEGURIDAD", "cambio": "ACTUALIZACIÓN"}[tipo]
+    novedades_html = obtener_novedades_html()
 
     html = f"""
-    <html><body style="font-family:Calibri,Arial;background:#f4f4f8;padding:20px;margin:0">
+    <html><body style="font-family:Arial,sans-serif;background:#f4f4f8;padding:20px;margin:0">
     <div style="max-width:620px;margin:0 auto;background:white;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
-
-      <!-- Header azul -->
       <div style="background:#281FD0;padding:24px 28px 16px">
         <div style="font-size:11px;color:#FFE000;letter-spacing:3px;font-weight:bold;text-transform:uppercase">Alcaldía de Jamundí · Valle del Cauca</div>
         <div style="font-size:20px;font-weight:bold;color:white;margin-top:4px">Observatorio del Delito</div>
-        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">{fecha_hoy} · GitHub Actions</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px">Mindefensa · {fecha_hoy}</div>
       </div>
-
-      <!-- Línea amarilla -->
       <div style="height:4px;background:linear-gradient(to right,#FFE000 20%,#281FD0 20%)"></div>
-
-      <!-- Badge tipo -->
       <div style="padding:16px 28px 0">
         <span style="background:{color_badge};color:white;font-size:10px;font-weight:bold;letter-spacing:2px;padding:4px 12px;border-radius:20px">{label_badge}</span>
       </div>
-
-      <!-- Contenido -->
       <div style="padding:20px 28px">
         <h2 style="color:#281FD0;font-size:16px;margin:0 0 8px">{titulo}</h2>
         <p style="color:#606175;font-size:13px;margin:0 0 20px">{descripcion}</p>
+        
+        {novedades_html}
 
-        <!-- Stats -->
         <table style="width:100%;border-collapse:collapse;margin-bottom:20px">
           <tr>
             <td style="background:#f4f4f8;padding:12px;border-radius:4px;text-align:center;width:33%">
               <div style="font-size:24px;font-weight:bold;color:#281FD0">{total}</div>
-              <div style="font-size:11px;color:#606175">Archivos monitoreados</div>
+              <div style="font-size:11px;color:#606175">Archivos en portal</div>
             </td>
             <td style="width:2%"></td>
             <td style="background:#f4f4f8;padding:12px;border-radius:4px;text-align:center;width:33%">
               <div style="font-size:24px;font-weight:bold;color:#{"C0392B" if nuevos > 0 else "2E7D32"}">{nuevos}</div>
-              <div style="font-size:11px;color:#606175">Archivos nuevos</div>
+              <div style="font-size:11px;color:#606175">Descargas nuevas</div>
             </td>
             <td style="width:2%"></td>
             <td style="background:#f4f4f8;padding:12px;border-radius:4px;text-align:center;width:33%">
               <div style="font-size:24px;font-weight:bold;color:#{"FFB600" if cambios > 0 else "2E7D32"}">{cambios}</div>
-              <div style="font-size:11px;color:#606175">Archivos actualizados</div>
+              <div style="font-size:11px;color:#606175">Actualizados</div>
             </td>
           </tr>
         </table>
-
-        <p style="color:#606175;font-size:12px">
-          <b>Última revisión:</b> {ultima[:19] if ultima != "—" else "—"}<br>
-          <b>Período del boletín:</b> {mes_actual} {datetime.now().year}
-        </p>
-
-        {"<p style='color:#2E7D32;font-weight:bold;font-size:13px'>✅ Se adjunta el boletín PDF con el análisis completo.</p>" if REPORTE_PDF.exists() else ""}
+        {"<p style='color:#2E7D32;font-weight:bold;font-size:13px'>✅ Se adjunta el boletín PDF con el análisis consolidado.</p>" if REPORTE_PDF.exists() else ""}
       </div>
-
-      <!-- Footer -->
       <div style="background:#281FD0;padding:12px 28px;border-top:3px solid #FFE000">
         <p style="color:rgba(255,255,255,.7);font-size:10px;margin:0;text-align:center">
-          Alcaldía de Jamundí · Secretaría de Seguridad y Convivencia · www.jamundi.gov.co<br>
-          Fuente: Ministerio de Defensa Nacional · Código municipio: 76364
+          Alcaldía de Jamundí · Secretaría de Seguridad y Convivencia · Fuente: Mindefensa
         </p>
       </div>
     </div>
@@ -134,26 +122,21 @@ def enviar_resumen():
     msg = MIMEMultipart("mixed")
     msg["Subject"] = asunto
     msg["From"]    = CORREO
-    msg["To"]      = CORREO
+    msg["To"]      = DESTINO
     msg.attach(MIMEText(html, "html"))
 
-    # Adjuntar PDF si existe
     if REPORTE_PDF.exists():
         with open(REPORTE_PDF, "rb") as f:
             part = MIMEBase("application", "octet-stream")
             part.set_payload(f.read())
         encoders.encode_base64(part)
-        nombre_pdf = f"Boletin_Observatorio_Jamundi_{datetime.now().strftime('%Y%m%d')}.pdf"
-        part.add_header("Content-Disposition", f"attachment; filename={nombre_pdf}")
+        part.add_header("Content-Disposition", f"attachment; filename={REPORTE_PDF.name}")
         msg.attach(part)
-        print(f"PDF adjunto: {nombre_pdf}")
-    else:
-        print("PDF no encontrado, enviando sin adjunto")
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(CORREO, PASSWD)
-        server.sendmail(CORREO, CORREO, msg.as_string())
-    print(f"Correo enviado a {CORREO} [{tipo}]")
+        server.sendmail(CORREO, DESTINO, msg.as_string())
+    print(f"Correo Mindefensa enviado a {DESTINO} [{tipo}]")
 
 if __name__ == "__main__":
     enviar_resumen()

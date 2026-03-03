@@ -449,6 +449,16 @@ def generar_pdf(datos, ruta_salida):
 
     doc.build(historia)
     print(f"\n REPORTE GENERADO: {ruta_salida}")
+    
+    # Exportar totales para comparación
+    import json
+    resumen = {}
+    for d, df in datos.items():
+        resumen[d] = int(total_anio(df, anio_actual, hasta_mes=mes_actual))
+    
+    with open("resumen_actual_mindefensa.json", "w", encoding="utf-8") as f:
+        json.dump(resumen, f, ensure_ascii=False, indent=2)
+    print("📊 Totales Mindefensa exportados a resumen_actual_mindefensa.json")
 
 if __name__ == '__main__':
     print("=" * 60)
