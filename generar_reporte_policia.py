@@ -252,6 +252,16 @@ def generar_pdf(datos, salida):
 
     doc.build(h)
     print(f"✅ Reporte generado: {salida}")
+    
+    # Exportar totales para comparación en el correo
+    import json
+    resumen = {}
+    for d, df in datos.items():
+        resumen[d] = int(total_anio(df, anio_act, mes_actual))
+    
+    with open("resumen_actual.json", "w", encoding="utf-8") as f:
+        json.dump(resumen, f, ensure_ascii=False, indent=2)
+    print("📊 Totales exportados a resumen_actual.json")
 
 if __name__ == "__main__":
     d = leer_datos()

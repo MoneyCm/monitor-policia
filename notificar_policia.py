@@ -66,18 +66,51 @@ def html_base(titulo: str, cuerpo: str) -> str:
     """
 
 
+import json
+
+def obtener_novedades():
+    """Compara resumen_actual.json con resumen_anterior.json y genera texto HTML."""
+    path_act = Path("resumen_actual.json")
+    path_ant = Path("resumen_anterior.json")
+    
+    if not path_act.exists():
+        return ""
+    
+    with open(path_act, "r", encoding="utf-8") as f:
+        act = json.load(f)
+    
+    ant = {}
+    if path_ant.exists():
+        with open(path_ant, "r", encoding="utf-8") as f:
+            ant = json.load(f)
+    
+    novedades = []
+    for delito, total_act in act.items():
+        total_ant = ant.get(delito, 0)
+        diff = total_act - total_ant
+        if diff > 0:
+            novedades.append(f"<li><b>{delito}</b>: <span style='color:#C0392B'>+{int(diff)} nuevos</span> (Total: {int(total_act)})</li>")
+        elif diff < 0:
+            novedades.append(f"<li><b>{delito}</b>: <span style='color:#1A7A4A'>{int(diff)} casos</span> (Total: {int(total_act)})</li>")
+            
+    if not novedades:
+        return "<p style='color:#606175'><i>No hay cambios numéricos en los totales de los delitos analizados.</i></p>"
+    
+    return "<p><b>Resumen de novedades detectadas:</b></p><ul>" + "".join(novedades) + "</ul>"
+
 def main():
     tipo = sys.argv[1] if len(sys.argv) > 1 else "cambio"
     hoy  = datetime.now()
     mes  = MESES_ES[hoy.month]
+    
+    html_novedades = obtener_novedades()
 
     if tipo == "cambio":
         asunto = f"🚨 Cambio detectado — Datos Policía Nacional · {hoy.strftime('%d/%m/%Y %H:%M')}"
-        cuerpo = """
-        <p>Se detectaron <strong>nuevos datos o actualizaciones</strong> en la estadística
-        delictiva de la Policía Nacional para Jamundí.</p>
-        <p>El reporte actualizado se adjunta a este correo.</p>
-        <p style="color:#C0392B"><strong>Revise los indicadores que presentan variación.</strong></p>
+        cuerpo = f"""
+        <p>Se detectaron <b>nuevos datos o actualizaciones</b> en la estadística delictiva de la Policía Nacional para Jamundí.</p>
+        {html_novedades}
+        <p>El reporte detallado se adjunta a este correo en formato PDF.</p>
         """
 
     elif tipo == "planificacion":

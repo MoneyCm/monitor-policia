@@ -31,13 +31,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Instalar dependencias
-        run: pip install requests pandas openpyxl python-calamine matplotlib reportlab
-
-      - name: Descargar y Procesar
-        run: |
-          python descargar_policia.py
-          python generar_reporte_policia.py
+      - name: Restaurar caché de Hash y Resumen
+        uses: actions/cache@v4
+        with:
+          path: |
+            .last_hash
+            resumen_anterior.json
+          key: cache-policia-${{ github.run_id }}
+          restore-keys: |
+            cache-policia-
 
       - name: Verificar cambios y notificar
         id: check_changes
@@ -46,28 +48,22 @@ jobs:
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
           EMAIL_DEST: ${{ secrets.EMAIL_DEST }}
         run: |
-          # Calcular hash actual de todos los archivos descargados
           HASH_ACTUAL=$(find policia_xlsx -name "*.xlsx" -exec md5sum {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
-          
-          # Leer hash anterior si existe
           if [ -f .last_hash ]; then HASH_PREVIO=$(cat .last_hash); else HASH_PREVIO=""; fi
-          
-          # SOLO SI HUBO CAMBIOS REALES EN LA INFORMACIÓN
+
           if [ "$HASH_ACTUAL" != "$HASH_PREVIO" ]; then
-            echo "Detección: ¡Hay datos nuevos!"
             echo "$HASH_ACTUAL" > .last_hash
-            
-            # Determinar tipo de correo según el momento (UTC)
-            # Martes 21:00 UTC -> Planeación
+
+            # Notificar según horario
             if [[ "${{ github.event.schedule }}" == "0 21 * * 2" ]]; then
               python notificar_policia.py planificacion
-            # Viernes 21:00 UTC -> Consejo
             elif [[ "${{ github.event.schedule }}" == "0 21 * * 5" ]]; then
               python notificar_policia.py consejo
-            # Cualquier otro momento -> Cambio detectado
             else
               python notificar_policia.py cambio
             fi
-          else
-            echo "La información no ha cambiado desde la última notificación. No se envía correo."
+
+            # Mover actual a anterior para la PRÓXIMA vez
+            if [ -f resumen_actual.json ]; then cp resumen_actual.json resumen_anterior.json; fi
           fi
+
