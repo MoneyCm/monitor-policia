@@ -94,18 +94,23 @@ def obtener_novedades():
             novedades.append(f"<li><b>{delito}</b>: <span style='color:#1A7A4A'>{int(diff)} casos</span> (Total: {int(total_act)})</li>")
             
     if not novedades:
-        return "<p style='color:#606175'><i>No hay cambios numéricos en los totales de los delitos analizados.</i></p>"
+        return "<p style='color:#606175'><i>No hay cambios numéricos en los totales de los delitos analizados.</i></p>", False
     
-    return "<p><b>Resumen de novedades detectadas:</b></p><ul>" + "".join(novedades) + "</ul>"
+    return "<p><b>Resumen de novedades detectadas:</b></p><ul>" + "".join(novedades) + "</ul>", True
 
 def main():
-    tipo = sys.argv[1] if len(sys.argv) > 1 else "cambio"
+    tipo = sys.argv[1].lower().strip() if len(sys.argv) > 1 else "cambio"
     hoy  = datetime.now()
     mes  = MESES_ES[hoy.month]
     
-    html_novedades = obtener_novedades()
+    html_novedades, hay_cambios = obtener_novedades()
 
-    if tipo == "cambio":
+    # Si es un monitoreo de rutina (cambio o diario) y no hay cambios, no enviar nada
+    if tipo in ["cambio", "diario"] and not hay_cambios:
+        print(f"⏩ Sin cambios detectados. Se omite el envío de correo ({tipo}).")
+        return
+
+    if tipo == "cambio" or tipo == "diario":
         asunto = f"🚨 Cambio detectado — Datos Policía Nacional · {hoy.strftime('%d/%m/%Y %H:%M')}"
         cuerpo = f"""
         <p>Se detectaron <b>nuevos datos o actualizaciones</b> en la estadística delictiva de la Policía Nacional para Jamundí.</p>

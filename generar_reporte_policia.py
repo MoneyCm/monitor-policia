@@ -46,26 +46,52 @@ def _read_excel_smart(path: Path, engine: str) -> pd.DataFrame:
     skip = HEADER_POS_CACHE.get(tipo, 0)
     
     try:
-        df = pd.read_excel(path, engine=engine, skiprows=skip)
-        cols = [str(c).upper() for c in df.columns]
+        probe = pd.read_excel(path, engine=engine, skiprows=skip, nrows=5)
+        cols = [str(c).upper() for c in probe.columns]
         if any(cand in cols for cand in ("MUNICIPIO", "CANTIDAD", "FECHA")):
-            return df
+            return pd.read_excel(path, engine=engine, skiprows=skip)
     except: pass
 
     # Si falla, buscar en las primeras 15 filas
     for i in range(0, 15):
         try:
-            df = pd.read_excel(path, engine=engine, skiprows=i)
-            cols = [str(c).upper() for c in df.columns]
+            probe = pd.read_excel(path, engine=engine, skiprows=i, nrows=5)
+            cols = [str(c).upper() for c in probe.columns]
             if any(cand in cols for cand in ("MUNICIPIO", "CANTIDAD", "FECHA")):
                 HEADER_POS_CACHE[tipo] = i
-                return df
+                return pd.read_excel(path, engine=engine, skiprows=i)
         except: continue
     return pd.read_excel(path, engine=engine)
 
 def _safe_read_excel(path: Path) -> pd.DataFrame:
     try: return _read_excel_smart(path, engine="openpyxl")
     except: return _read_excel_smart(path, engine="openpyxl")
+
+def _build_fecha_hecho(df: pd.DataFrame):
+    col_fecha = next((c for c in df.columns if "FECHA" in str(c).upper()), None)
+    if col_fecha:
+        serie = df[col_fecha]
+        if pd.api.types.is_numeric_dtype(serie):
+            fecha = pd.to_datetime(serie, unit="D", origin="1899-12-30", errors="coerce")
+        else:
+            fecha = pd.to_datetime(serie, dayfirst=True, errors="coerce")
+            if fecha.notna().sum() == 0:
+                fecha = pd.to_datetime(serie, errors="coerce")
+        if fecha.notna().sum() > 0:
+            return fecha
+
+    col_anio = next((c for c in df.columns if any(x in str(c).upper() for x in ("ANIO", "AÑO", "ANO", "YEAR"))), None)
+    col_mes = next((c for c in df.columns if "MES" in str(c).upper()), None)
+    if col_anio and col_mes:
+        anio = pd.to_numeric(df[col_anio], errors="coerce")
+        mes = pd.to_numeric(df[col_mes], errors="coerce")
+        if anio.notna().sum() > 0 and mes.notna().sum() > 0:
+            return pd.to_datetime(
+                {"year": anio.astype("Int64"), "month": mes.astype("Int64"), "day": 1},
+                errors="coerce"
+            )
+
+    return pd.Series(pd.NaT, index=df.index)
 
 def descubrir_datasets():
     base = Path(CARPETA)
@@ -95,12 +121,10 @@ def leer_datos() -> dict:
                 col_muni = next((c for c in df.columns if "MUNICIPIO" in c.upper()), None)
                 if col_muni:
                     df = df[df[col_muni].astype(str).str.strip().str.lower() == MUNICIPIO_FILTRO.lower()].copy()
-                col_fecha = next((c for c in df.columns if "FECHA" in c.upper()), None)
-                if col_fecha:
-                    df["FECHA_HECHO"] = pd.to_datetime(df[col_fecha], dayfirst=True, errors="coerce")
-                    df = df.dropna(subset=["FECHA_HECHO"])
-                    df["ANIO"] = df["FECHA_HECHO"].dt.year
-                    df["MES"]  = df["FECHA_HECHO"].dt.month
+                df["FECHA_HECHO"] = _build_fecha_hecho(df)
+                df = df.dropna(subset=["FECHA_HECHO"])
+                df["ANIO"] = df["FECHA_HECHO"].dt.year
+                df["MES"]  = df["FECHA_HECHO"].dt.month
                 col_cant = next((c for c in df.columns if "CANTIDAD" in c.upper()), None)
                 df["col_cantidad"] = pd.to_numeric(df[col_cant], errors="coerce").fillna(0) if col_cant else 0
                 frames.append(df)
@@ -189,6 +213,12 @@ def generar_pdf(datos, salida):
     mes_actual = fecha_max.month if fecha_max.day > 25 else (fecha_max.month - 1 or 12)
     anio_act, anio_ant = fecha_max.year, fecha_max.year - 1
 
+    # Si el corte mensual deja el año anterior completamente en cero,
+    # usar comparación anual completa para evitar falsos ceros.
+    total_ant_corte = sum(total_anio(df, anio_ant, mes_actual) for df in datos.values())
+    if total_ant_corte == 0:
+        mes_actual = 12
+
     doc = SimpleDocTemplate(salida, pagesize=A4, leftMargin=1.8*cm, rightMargin=1.8*cm, topMargin=1.2*cm, bottomMargin=1.5*cm)
     W = A4[0] - 3.6*cm
     h = []
@@ -257,12 +287,17 @@ def generar_pdf(datos, salida):
     print(f"✅ Reporte generado: {salida}")
     
     # Exportar totales para comparación en el correo
-    import json
+    import json, shutil
     resumen = {}
     for d, df in datos.items():
         resumen[d] = int(total_anio(df, anio_act, mes_actual))
     
-    with open("resumen_actual.json", "w", encoding="utf-8") as f:
+    path_act = Path("resumen_actual.json")
+    if path_act.exists():
+        shutil.copy(path_act, "resumen_anterior.json")
+        print("🔄 Estado anterior rotado a resumen_anterior.json")
+
+    with open(path_act, "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=2)
     print("📊 Totales exportados a resumen_actual.json")
 
