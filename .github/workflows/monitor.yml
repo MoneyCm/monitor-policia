@@ -1,18 +1,18 @@
-name: Monitor Policía Nacional — Jamundí
+name: Monitor Policia Nacional - Jamundi
 
 on:
   schedule:
-    # 1. Ejecución diaria 7:00 AM Colombia (12:00 UTC)
     - cron: "0 12 * * *"
-    # 2. Refuerzo Martes 6:00 PM Col (23:00 UTC)
     - cron: "0 23 * * 2"
-    # 3. Refuerzo Viernes 6:00 PM Col (23:00 UTC)
     - cron: "0 23 * * 5"
   workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout repositorio
         uses: actions/checkout@v4
@@ -22,24 +22,87 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Restaurar estado anterior
+        uses: actions/cache@v4
+        with:
+          path: .monitor_state
+          key: monitor-policia-state-${{ github.run_id }}
+          restore-keys: |
+            monitor-policia-state-
+
       - name: Instalar dependencias
         run: |
-          pip install requests pandas openpyxl python-calamine matplotlib reportlab
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Descargar datos Policía
+      - name: Instalar Chromium para Playwright
+        run: python -m playwright install --with-deps chromium
+
+      - name: Preparar comparacion
+        shell: bash
+        run: |
+          mkdir -p .monitor_state
+          if [ -f .monitor_state/resumen_actual.json ]; then
+            cp .monitor_state/resumen_actual.json resumen_anterior.json
+          fi
+
+      - name: Descargar datos Policia
         run: python descargar_policia.py
 
-      - name: Generar Boletín PDF
+      - name: Generar boletin PDF
         run: python generar_reporte_policia.py
 
-      - name: Notificar por Correo
+      - name: Detectar cambios reales
+        id: cambios
+        shell: bash
+        run: |
+          if [ ! -f resumen_actual.json ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No se genero resumen_actual.json"
+            exit 0
+          fi
+
+          if [ ! -f .monitor_state/resumen_actual.json ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Primera ejecucion: no habia estado previo"
+            exit 0
+          fi
+
+          if cmp -s resumen_actual.json .monitor_state/resumen_actual.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Sin cambios en la informacion"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Se detectaron cambios en la informacion"
+          fi
+
+      - name: Notificar por correo si hubo cambios
+        if: steps.cambios.outputs.changed == 'true'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
           EMAIL_DEST: ${{ secrets.EMAIL_DEST }}
+        shell: bash
         run: |
-          # Determinar tipo según el evento
           TIPO="diario"
-          if [[ "${{ github.event.schedule }}" == "0 23 * * 2" ]]; then TIPO="reunion"; fi
+          if [[ "${{ github.event.schedule }}" == "0 23 * * 2" ]]; then TIPO="planificacion"; fi
           if [[ "${{ github.event.schedule }}" == "0 23 * * 5" ]]; then TIPO="consejo"; fi
-          python notificar_policia.py $TIPO
+          python notificar_policia.py "$TIPO"
+
+      - name: Guardar nuevo estado
+        if: always() && hashFiles('resumen_actual.json') != ''
+        shell: bash
+        run: |
+          mkdir -p .monitor_state
+          cp resumen_actual.json .monitor_state/resumen_actual.json
+
+      - name: Subir artefactos cuando cambia
+        if: steps.cambios.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-policia
+          path: |
+            reporte_policia.pdf
+            resumen_actual.json
+            graf_comp_policia.png
+            graf_tend_policia.png
