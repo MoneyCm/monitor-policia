@@ -203,9 +203,18 @@ def obtener_enlaces_actuales():
                 raise RuntimeError(f"HTTP {status} al cargar la pagina.")
             page.wait_for_timeout(3000)
 
-            # Detectar selects: delito vs año
-            selects = page.query_selector_all("select")
+            # Filtrar selects: ignorar el widget de Google Translate y otros ocultos
+            all_selects = page.query_selector_all("select")
+            selects = []
+            for s in all_selects:
+                if not s.is_visible(): continue
+                cls = s.get_attribute("class") or ""
+                if "goog-te" in cls: continue
+                # Si el select tiene poquísimas opciones y no es el de año, probablemente sea otro widget
+                selects.append(s)
+
             if len(selects) < 2:
+                sys.stderr.write(f"  [ERROR] No se detectaron suficientes selects válidos (encontrados: {len(selects)})\n")
                 registrar_enlaces(page, "vista_inicial")
                 browser.close()
                 raise RuntimeError("No se detectaron selects de filtro (delito/año).")
@@ -215,27 +224,50 @@ def obtener_enlaces_actuales():
                 for o in select.query_selector_all("option"):
                     v = (o.get_attribute("value") or "").strip()
                     t = (o.inner_text() or "").strip()
-                    opts.append({"value": v, "label": t})
+                    if v or t:
+                        opts.append({"value": v, "label": t})
                 return opts
 
             scored = []
+            crime_keywords = {"homicidio", "hurto", "lesiones", "delito", "extorsion", "amenazas"}
             for idx, s in enumerate(selects):
                 opts = opciones_de(s)
+                # Puntuación de año: opciones que coinciden con 20xx
                 year_like = sum(1 for o in opts if YEAR_RE.fullmatch(o["label"]) or YEAR_RE.fullmatch(o["value"]))
-                scored.append((year_like, len(opts), idx, opts))
+                # Puntuación de delito: opciones que contienen palabras clave de delitos
+                crime_like = sum(1 for o in opts if any(k in _norm(o["label"]) for k in crime_keywords))
+                scored.append({
+                    "idx": idx, 
+                    "year_score": year_like, 
+                    "crime_score": crime_like, 
+                    "n_opts": len(opts), 
+                    "opts": opts
+                })
 
-            # El select "año" tiene muchas opciones tipo 20xx
-            scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
-            year_like, _, idx_anio, opts_anio = scored[0]
-            if year_like < 5:
+            # Identificar Año: el que tenga más "year_like"
+            scored.sort(key=lambda x: x["year_score"], reverse=True)
+            best_year = scored[0]
+            idx_anio = best_year["idx"]
+            opts_anio = best_year["opts"]
+
+            if best_year["year_score"] < 5:
+                sys.stderr.write(f"  [ERROR] No se identificó un select de años claro.\n")
                 registrar_enlaces(page, "vista_inicial")
                 browser.close()
                 raise RuntimeError("No se pudo identificar el select de años.")
 
-            # El otro select lo tomamos como "delito"
-            idx_delito = next((i for i in range(len(selects)) if i != idx_anio), None)
-            select_delito = selects[idx_delito] if idx_delito is not None else None
-            opts_delito = opciones_de(select_delito) if select_delito else []
+            # Identificar Delito: el que no sea año y tenga más "crime_score", o simplemente más opciones
+            other_selects = [s for s in scored if s["idx"] != idx_anio]
+            if not other_selects:
+                sys.stderr.write(f"  [ERROR] Solo se encontró un select (Año), falta el de Delito.\n")
+                registrar_enlaces(page, "vista_inicial")
+                browser.close()
+                raise RuntimeError("No se detectó el select de delitos.")
+            
+            other_selects.sort(key=lambda x: (x["crime_score"], x["n_opts"]), reverse=True)
+            best_delito = other_selects[0]
+            idx_delito = best_delito["idx"]
+            opts_delito = best_delito["opts"]
 
             # Preparar listas (permiten override por variables de entorno)
             years_allow = _parse_list_env("POLICIA_YEARS")  # ej: "2024,2025"
@@ -289,20 +321,21 @@ def obtener_enlaces_actuales():
             # Recorrer combinaciones: año + delito + Buscar
             for y in years:
                 try:
-                    # Reubicar selects en cada iteración (el DOM cambia tras buscar)
-                    select_anio_live = page.locator("select").nth(idx_anio)
+                    # Reubicar selects en cada iteración: usar solo los visibles (ignora Translate)
+                    select_anio_live = page.locator("select:visible").nth(idx_anio)
                     if y["value"]:
                         select_anio_live.select_option(value=y["value"])
                     else:
                         select_anio_live.select_option(label=y["label"])
-                except Exception:
+                except Exception as e:
+                    sys.stderr.write(f"  [ERROR] Fallo al seleccionar año {y['label']}: {e}\n")
                     continue
 
                 sys.stderr.write(f"-> Año: {y['label']}\n")
                 for i, d in enumerate(delitos, 1):
                     try:
                         sys.stderr.write(f"   [{i}/{len(delitos)}] Buscando: {d['label']}...\n")
-                        select_delito_live = page.locator("select").nth(idx_delito)
+                        select_delito_live = page.locator("select:visible").nth(idx_delito)
                         if d["value"]:
                             select_delito_live.select_option(value=d["value"])
                         else:
