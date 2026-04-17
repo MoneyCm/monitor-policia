@@ -4,11 +4,13 @@ Recorre el selector de años para descubrir todos los XLSX publicados.
 """
 
 import os
+import sys
 import time
 import requests
 import re
 from pathlib import Path
 from urllib.parse import urljoin, unquote
+import hashlib
 from playwright.sync_api import sync_playwright
 
 CARPETA = "policia_xlsx"
@@ -33,6 +35,38 @@ def _parse_list_env(name: str):
         return None
     parts = [p.strip() for p in raw.split(",")]
     return [p for p in parts if p]
+
+def calcular_fingerprint(urls: list[str]) -> str:
+    """
+    Calcula un fingerprint remoto rapido sin descargar contenidos.
+    Usa cabeceras HTTP (ETag/Last-Modified/Content-Length) y la URL.
+    """
+    rows: list[str] = []
+    sess = requests.Session()
+
+    for url in sorted(set(urls)):
+        etag = ""
+        last_modified = ""
+        length = ""
+        try:
+            r = sess.head(url, headers=HEADERS, timeout=20, allow_redirects=True)
+            if r.status_code == 405:
+                r = sess.get(url, headers=HEADERS, timeout=20, stream=True, allow_redirects=True)
+            etag = (r.headers.get("ETag") or "").strip()
+            last_modified = (r.headers.get("Last-Modified") or "").strip()
+            length = (r.headers.get("Content-Length") or "").strip()
+            try:
+                r.close()
+            except Exception:
+                pass
+        except Exception:
+            # Si el servidor falla o rate-limit, aun asi incluimos la URL para estabilidad parcial.
+            pass
+
+        rows.append(f"{url}\t{etag}\t{last_modified}\t{length}")
+
+    payload = "\n".join(rows).encode("utf-8", errors="replace")
+    return hashlib.md5(payload).hexdigest()
 
 def obtener_enlaces_actuales():
     """Busca enlaces XLSX recorriendo las opciones del menú de años."""
@@ -72,8 +106,6 @@ def obtener_enlaces_actuales():
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
             page = browser.new_page()
-            page.set_default_timeout(10000)
-            page.set_default_navigation_timeout(20000)
             page.on("response", lambda resp: (
                 enlaces.__setitem__(resp.url, "network_response")
                 if (".xlsx" in resp.url.lower() and "delitos-impacto" in resp.url.lower())
@@ -143,8 +175,6 @@ def obtener_enlaces_actuales():
                 delitos.append(o)
 
             print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
-            total_combinaciones = len(years) * len(delitos)
-            print(f"Combinaciones a evaluar: {total_combinaciones}")
 
             btn_buscar = page.locator("button:has-text('Buscar')").first
             if btn_buscar.count() == 0:
@@ -153,7 +183,6 @@ def obtener_enlaces_actuales():
                 raise RuntimeError("No se encontró botón 'Buscar'.")
 
             # Recorrer combinaciones: año + delito + Buscar
-            procesadas = 0
             for y in years:
                 try:
                     # Reubicar selects en cada iteración (el DOM cambia tras buscar)
@@ -166,8 +195,6 @@ def obtener_enlaces_actuales():
                     continue
 
                 for d in delitos:
-                    procesadas += 1
-                    print(f"[{procesadas}/{total_combinaciones}] {y['label']} | {d['label']}")
                     try:
                         select_delito_live = page.locator("select").nth(idx_delito)
                         if d["value"]:
@@ -176,9 +203,8 @@ def obtener_enlaces_actuales():
                             select_delito_live.select_option(label=d["label"])
 
                         btn_buscar.click()
-                        # Este formulario suele actualizar el DOM sin navegación.
-                        # En Actions, esperar "load_state" por cada clic vuelve el proceso muy lento.
-                        page.wait_for_timeout(1200)
+                        page.wait_for_timeout(1500)
+                        page.wait_for_load_state("domcontentloaded", timeout=15000)
 
                         registrar_enlaces(page, f"{y['label']}|{d['label']}")
                     except Exception:
@@ -222,6 +248,13 @@ def descargar(url: str, destino: Path, reintentos: int = 2) -> bool:
     return False
 
 def main():
+    if "--fingerprint" in sys.argv:
+        enlaces = obtener_enlaces_actuales()
+        fp = calcular_fingerprint(enlaces)
+        # Salida pensada para GitHub Actions: un solo valor en stdout.
+        print(fp)
+        return
+
     carpeta = Path(CARPETA)
     carpeta.mkdir(exist_ok=True)
 
@@ -243,7 +276,8 @@ def main():
         nombre_local = unquote(nombre_archivo)
         destino = carpeta / nombre_local
         
-        print(f"→ Procesando: {nombre_local}")
+        # ASCII only para consolas Windows (evita UnicodeEncodeError con cp1252)
+        print(f"-> Procesando: {nombre_local}")
         
         # Cache: Si ya existe y pesa más de 5KB, no descargar
         if destino.exists() and destino.stat().st_size > 5000:

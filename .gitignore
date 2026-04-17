@@ -51,4 +51,8 @@ enviar_reporte.py
 mindefensa_state.json
 monitor_log.txt
 mindefensa_xlsx/
+policia_xlsx/
+__pycache__/
+.venv/
+.tmp/
 

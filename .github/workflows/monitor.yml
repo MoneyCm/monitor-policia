@@ -7,12 +7,17 @@ on:
     - cron: "0 23 * * 5"
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
+    env:
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Checkout repositorio
@@ -23,14 +28,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Restaurar estado anterior
-        uses: actions/cache@v4
-        with:
-          path: .monitor_state
-          key: monitor-policia-state-${{ github.run_id }}
-          restore-keys: |
-            monitor-policia-state-
-
       - name: Instalar dependencias
         run: |
           python -m pip install --upgrade pip
@@ -39,7 +36,44 @@ jobs:
       - name: Instalar Chromium para Playwright
         run: python -m playwright install --with-deps chromium
 
-      - name: Preparar comparacion
+      - name: Calcular fingerprint remoto
+        id: fp
+        shell: bash
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          FP="$(python descargar_policia.py --fingerprint)"
+          echo "hash=$FP" >> "$GITHUB_OUTPUT"
+          echo "Fingerprint: $FP"
+
+      - name: Cache policia_xlsx + estado (por fingerprint)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            policia_xlsx
+            .monitor_state
+          key: policia-cache-${{ steps.fp.outputs.hash }}
+          restore-keys: |
+            policia-cache-
+
+      - name: Decidir si ejecutar descarga completa
+        id: cambios
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ steps.cache.outputs.cache-hit }}" = "true" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar resumen anterior (si existe)
+        if: steps.cambios.outputs.changed == 'true'
         shell: bash
         run: |
           mkdir -p .monitor_state
@@ -48,35 +82,13 @@ jobs:
           fi
 
       - name: Descargar datos Policia
-        timeout-minutes: 8
+        if: steps.cambios.outputs.changed == 'true'
+        timeout-minutes: 25
         run: python descargar_policia.py
 
       - name: Generar boletin PDF
+        if: steps.cambios.outputs.changed == 'true'
         run: python generar_reporte_policia.py
-
-      - name: Detectar cambios reales
-        id: cambios
-        shell: bash
-        run: |
-          if [ ! -f resumen_actual.json ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No se genero resumen_actual.json"
-            exit 0
-          fi
-
-          if [ ! -f .monitor_state/resumen_actual.json ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Primera ejecucion: no habia estado previo"
-            exit 0
-          fi
-
-          if cmp -s resumen_actual.json .monitor_state/resumen_actual.json; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Sin cambios en la informacion"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Se detectaron cambios en la informacion"
-          fi
 
       - name: Notificar por correo si hubo cambios
         if: steps.cambios.outputs.changed == 'true'
@@ -92,7 +104,7 @@ jobs:
           python notificar_policia.py "$TIPO"
 
       - name: Guardar nuevo estado
-        if: always() && hashFiles('resumen_actual.json') != ''
+        if: steps.cambios.outputs.changed == 'true' && hashFiles('resumen_actual.json') != ''
         shell: bash
         run: |
           mkdir -p .monitor_state
