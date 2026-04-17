@@ -8,6 +8,7 @@ import sys
 import time
 import requests
 import re
+import json
 from pathlib import Path
 from urllib.parse import urljoin, unquote
 import hashlib
@@ -282,8 +283,8 @@ def obtener_enlaces_actuales():
             id_anio = get_sel_id(idx_anio)
             id_delito = get_sel_id(idx_delito)
             
-            # Selector de botón que capta <button> e <input type="submit">
-            BTN_SELECTOR = "role=button[name='Buscar'i], button:has-text('Buscar'), input[value='Buscar'i]"
+            # Selector de botón robusto compatible con Playwright
+            BTN_SELECTOR = "button:has-text('Buscar'), input[type='submit'][value='Buscar'i], input[type='button'][value='Buscar'i], role=button[name='Buscar'i]"
 
             # Preparar listas (permiten override por variables de entorno)
             years_allow = _parse_list_env("POLICIA_YEARS")  # ej: "2024,2025"
@@ -302,8 +303,8 @@ def obtener_enlaces_actuales():
             if not years_allow:
                 years = sorted(years, key=lambda x: int(x["label"]))[-2:]
                 if os.environ.get("POLICIA_FP_MODE") == "1":
-                    # Para fingerprint, con 1 año suele ser suficiente y reduce tiempo.
-                    years = years[-1:]
+                    # Para fingerprint, usamos 2 años para asegurar cache consistente
+                    years = years[-2:]
 
             delitos = []
             for o in opts_delito:
@@ -360,7 +361,8 @@ def obtener_enlaces_actuales():
                             select_delito_live.select_option(label=d["label"])
 
                         # --- click robusto ---
-                        btn_buscar = page.locator(BTN_SELECTOR).first
+                        # Usamos .or_() para evitar el error de sintaxis con selectores múltiples no estándar
+                        btn_buscar = page.locator("button:has-text('Buscar')").or_(page.locator("input[value='Buscar'i]")).or_(page.get_by_role("button", name="Buscar", exact=True)).first
                         btn_buscar.wait_for(state="visible", timeout=TIMEOUT_SCRAPING)
                         btn_buscar.scroll_into_view_if_needed()
 

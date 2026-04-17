@@ -10,6 +10,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from datetime import datetime
+import json
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
