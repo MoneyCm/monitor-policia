@@ -171,14 +171,28 @@ def obtener_enlaces_actuales():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            page = browser.new_page()
+            browser = p.chromium.launch(
+                headless=True, 
+                args=[
+                    "--no-sandbox", 
+                    "--disable-setuid-sandbox", 
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--disable-extensions",
+                ]
+            )
+            # Usar un contexto con User-Agent realista
+            context = browser.new_context(user_agent=HEADERS["User-Agent"], viewport={"width": 1280, "height": 720})
+            page = context.new_page()
+
             page.on("response", lambda resp: (
-                enlaces.__setitem__(resp.url, "network_response")
+                sys.stderr.write(f"    [DETECTADO] {resp.url}\n") or enlaces.__setitem__(resp.url, "network_response")
                 if (".xlsx" in resp.url.lower() and "delitos-impacto" in resp.url.lower())
                 else None
             ))
-            resp = page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
+            
+            sys.stderr.write(f"Cargando página inicial...\n")
+            resp = page.goto(URL_WEB, wait_until="load", timeout=90000)
             try:
                 status = resp.status if resp is not None else None
             except Exception:
@@ -263,8 +277,10 @@ def obtener_enlaces_actuales():
                 delitos = _pick_delitos(delitos, max_delitos_general)
 
             print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
-
+            
+            # Asegurar que el botón es visible antes de empezar
             btn_buscar = page.locator("button:has-text('Buscar')").first
+            btn_buscar.scroll_into_view_if_needed()
             if btn_buscar.count() == 0:
                 registrar_enlaces(page, "vista_inicial")
                 browser.close()
@@ -282,21 +298,29 @@ def obtener_enlaces_actuales():
                 except Exception:
                     continue
 
-                for d in delitos:
+                sys.stderr.write(f"-> Año: {y['label']}\n")
+                for i, d in enumerate(delitos, 1):
                     try:
+                        sys.stderr.write(f"   [{i}/{len(delitos)}] Buscando: {d['label']}...\n")
                         select_delito_live = page.locator("select").nth(idx_delito)
                         if d["value"]:
                             select_delito_live.select_option(value=d["value"])
                         else:
                             select_delito_live.select_option(label=d["label"])
 
+                        # En Actions, a veces el clic no dispara el evento si es muy rápido
+                        page.wait_for_timeout(500)
                         btn_buscar.click()
-                        page.wait_for_timeout(1500)
-                        page.wait_for_load_state("domcontentloaded", timeout=15000)
-
+                        
+                        # Esperar un poco a que la petición de red se lance o el DOM cambie
+                        # No usamos wait_for_load_state("domcontentloaded") porque si es AJAX no lanzará navegación
+                        page.wait_for_timeout(2000)
+                        
                         registrar_enlaces(page, f"{y['label']}|{d['label']}")
-                    except Exception:
+                    except Exception as e:
+                        print(f"\n   [ERROR] En combinación {y['label']}-{d['label']}: {e}")
                         continue
+                print() # Nueva línea tras terminar los delitos
 
             browser.close()
 
@@ -342,6 +366,7 @@ def main():
             print("ERROR: No se pudieron descubrir enlaces XLSX (posible bloqueo/403).", file=sys.stderr)
             sys.exit(2)
         fp = calcular_fingerprint(enlaces)
+        sys.stderr.flush()
         # Salida pensada para GitHub Actions: un solo valor en stdout.
         print(fp)
         return

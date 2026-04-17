@@ -116,7 +116,7 @@ def leer_datos() -> dict:
         frames = []
         for archivo in archivos:
             try:
-                print(f"  → Cargando {archivo}...", end="\r")
+                print(f"  → Cargando {archivo}...")
                 df = _safe_read_excel(base / archivo)
                 col_muni = next((c for c in df.columns if "MUNICIPIO" in c.upper()), None)
                 if col_muni:
