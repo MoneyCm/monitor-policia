@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urljoin, unquote
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import unicodedata
 from playwright.sync_api import sync_playwright
 
 CARPETA = "policia_xlsx"
@@ -36,6 +37,59 @@ def _parse_list_env(name: str):
         return None
     parts = [p.strip() for p in raw.split(",")]
     return [p for p in parts if p]
+
+def _norm(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return s
+
+def _pick_delitos(opts: list[dict], max_n: int) -> list[dict]:
+    """
+    Reduce una lista potencialmente enorme de 'delitos' a un subconjunto estable.
+    Si encuentra coincidencias con delitos "core", prioriza esos; si no, toma los primeros max_n.
+    """
+    if len(opts) <= max_n:
+        return opts
+
+    core = [
+        "abigeato",
+        "amenazas",
+        "delitos sexuales",
+        "extorsion",
+        "homicidios",
+        "homicidio intencional",
+        "homicidios en accidente de transito",
+        "hurto a personas",
+        "hurto a residencias",
+        "hurto de automotores",
+        "hurto de motocicletas",
+        "hurto a comercio",
+        "hurto a entidades comerciales",
+        "hurto a entidades financieras",
+        "lesiones personales",
+        "lesiones en accidente de transito",
+        "violencia intrafamiliar",
+        "secuestro",
+        "terrorismo",
+        "pirateria terrestre",
+    ]
+    core_n = {_norm(x) for x in core}
+
+    picked = []
+    seen = set()
+    for o in opts:
+        lab = _norm(o.get("label") or "")
+        if not lab or lab in seen:
+            continue
+        if any(c in lab for c in core_n):
+            picked.append(o)
+            seen.add(lab)
+
+    if picked:
+        return picked[:max_n]
+
+    return opts[:max_n]
 
 def calcular_fingerprint(urls: list[str]) -> str:
     """
@@ -201,6 +255,12 @@ def obtener_enlaces_actuales():
             if os.environ.get("POLICIA_FP_MODE") == "1" and not delitos_allow:
                 max_delitos = int(os.environ.get("POLICIA_FP_DELITOS_MAX", "12"))
                 delitos = delitos[:max(1, max_delitos)]
+
+            # Modo general: si la pagina expone demasiados delitos, recortar a un subconjunto estable
+            # para evitar cientos de combinaciones y timeouts en GitHub Actions.
+            if not delitos_allow:
+                max_delitos_general = int(os.environ.get("POLICIA_DELITOS_MAX", "40"))
+                delitos = _pick_delitos(delitos, max_delitos_general)
 
             print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
 

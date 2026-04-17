@@ -89,6 +89,11 @@ jobs:
       - name: Descargar datos Policia
         if: steps.cambios.outputs.changed == 'true'
         timeout-minutes: 25
+        env:
+          # Limita el espacio de combinaciones en Actions (la pagina a veces lista 200+ delitos).
+          POLICIA_DELITOS_MAX: "40"
+          # Puedes fijar una lista exacta (coma-separada) si quieres 100% determinismo:
+          # POLICIA_DELITOS: "Amenazas,Delitos sexuales,Extorsión,Homicidios,Hurto a personas,Hurto a residencias,Hurto de automotores,Hurto de motocicletas,Lesiones personales,Violencia intrafamiliar,Secuestro,Terrorismo,Piratería terrestre,Abigeato"
         run: python descargar_policia.py
 
       - name: Generar boletin PDF
