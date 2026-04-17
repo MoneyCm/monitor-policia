@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from urllib.parse import urljoin, unquote
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from playwright.sync_api import sync_playwright
 
 CARPETA = "policia_xlsx"
@@ -41,17 +42,24 @@ def calcular_fingerprint(urls: list[str]) -> str:
     Calcula un fingerprint remoto rapido sin descargar contenidos.
     Usa cabeceras HTTP (ETag/Last-Modified/Content-Length) y la URL.
     """
-    rows: list[str] = []
-    sess = requests.Session()
+    urls_unique = sorted(set(urls))
+    rows: list[str] = [""] * len(urls_unique)
 
-    for url in sorted(set(urls)):
+    # En GitHub Actions, hacer 36-40 HEAD secuenciales puede tardar >10 min si el servidor tarda en responder.
+    # Esto paraleliza la consulta de metadatos y reduce el timeout para evitar acumulacion.
+    timeout_total = float(os.environ.get("POLICIA_FP_TIMEOUT", "12"))
+    timeout = (5.0, timeout_total)  # (connect, read)
+    workers = int(os.environ.get("POLICIA_FP_WORKERS", "8"))
+
+    def fetch_meta(i: int, url: str) -> tuple[int, str]:
         etag = ""
         last_modified = ""
         length = ""
         try:
-            r = sess.head(url, headers=HEADERS, timeout=20, allow_redirects=True)
+            r = requests.head(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
             if r.status_code == 405:
-                r = sess.get(url, headers=HEADERS, timeout=20, stream=True, allow_redirects=True)
+                r.close()
+                r = requests.get(url, headers=HEADERS, timeout=timeout, stream=True, allow_redirects=True)
             etag = (r.headers.get("ETag") or "").strip()
             last_modified = (r.headers.get("Last-Modified") or "").strip()
             length = (r.headers.get("Content-Length") or "").strip()
@@ -60,10 +68,15 @@ def calcular_fingerprint(urls: list[str]) -> str:
             except Exception:
                 pass
         except Exception:
-            # Si el servidor falla o rate-limit, aun asi incluimos la URL para estabilidad parcial.
+            # Si falla, dejamos cabeceras vacias pero aun incluimos URL para estabilidad.
             pass
+        return i, f"{url}\t{etag}\t{last_modified}\t{length}"
 
-        rows.append(f"{url}\t{etag}\t{last_modified}\t{length}")
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+        futs = [ex.submit(fetch_meta, i, url) for i, url in enumerate(urls_unique)]
+        for fut in as_completed(futs):
+            i, row = fut.result()
+            rows[i] = row
 
     payload = "\n".join(rows).encode("utf-8", errors="replace")
     return hashlib.md5(payload).hexdigest()
@@ -111,7 +124,15 @@ def obtener_enlaces_actuales():
                 if (".xlsx" in resp.url.lower() and "delitos-impacto" in resp.url.lower())
                 else None
             ))
-            page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
+            resp = page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
+            try:
+                status = resp.status if resp is not None else None
+            except Exception:
+                status = None
+            if status and int(status) >= 400:
+                registrar_enlaces(page, f"http_{status}")
+                browser.close()
+                raise RuntimeError(f"HTTP {status} al cargar la pagina.")
             page.wait_for_timeout(3000)
 
             # Detectar selects: delito vs año
@@ -164,6 +185,9 @@ def obtener_enlaces_actuales():
             # Por defecto, usar solo los 2 años más recientes del menú.
             if not years_allow:
                 years = sorted(years, key=lambda x: int(x["label"]))[-2:]
+                if os.environ.get("POLICIA_FP_MODE") == "1":
+                    # Para fingerprint, con 1 año suele ser suficiente y reduce tiempo.
+                    years = years[-1:]
 
             delitos = []
             for o in opts_delito:
@@ -173,6 +197,10 @@ def obtener_enlaces_actuales():
                 if delitos_allow and lab not in delitos_allow:
                     continue
                 delitos.append(o)
+
+            if os.environ.get("POLICIA_FP_MODE") == "1" and not delitos_allow:
+                max_delitos = int(os.environ.get("POLICIA_FP_DELITOS_MAX", "12"))
+                delitos = delitos[:max(1, max_delitos)]
 
             print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
 
@@ -250,6 +278,9 @@ def descargar(url: str, destino: Path, reintentos: int = 2) -> bool:
 def main():
     if "--fingerprint" in sys.argv:
         enlaces = obtener_enlaces_actuales()
+        if not enlaces:
+            print("ERROR: No se pudieron descubrir enlaces XLSX (posible bloqueo/403).", file=sys.stderr)
+            sys.exit(2)
         fp = calcular_fingerprint(enlaces)
         # Salida pensada para GitHub Actions: un solo valor en stdout.
         print(fp)

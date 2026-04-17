@@ -41,8 +41,13 @@ jobs:
         shell: bash
         env:
           PYTHONUNBUFFERED: "1"
+          POLICIA_FP_MODE: "1"
+          POLICIA_FP_DELITOS_MAX: "12"
+          POLICIA_FP_WORKERS: "10"
+          POLICIA_FP_TIMEOUT: "8"
         run: |
-          FP="$(python descargar_policia.py --fingerprint)"
+          python descargar_policia.py --fingerprint | tee fp.out
+          FP="$(tail -n 1 fp.out)"
           echo "hash=$FP" >> "$GITHUB_OUTPUT"
           echo "Fingerprint: $FP"
 
