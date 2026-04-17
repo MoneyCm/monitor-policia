@@ -85,18 +85,27 @@ def obtener_novedades():
             ant = json.load(f)
     
     novedades = []
-    for delito, total_act in act.items():
-        total_ant = ant.get(delito, 0)
+    # Usar todas las llaves disponibles (delitos, delitos_2024, delitos_2025)
+    for key, total_act in act.items():
+        total_ant = ant.get(key, 0)
         diff = total_act - total_ant
+        
+        if diff == 0:
+            continue
+            
+        # Limpiar etiqueta para el correo (ej: "Homicidios_2024" -> "Homicidios (2024)")
+        label = key.replace("_202", " (202")
+        if "(" in label: label += ")"
+            
         if diff > 0:
-            novedades.append(f"<li><b>{delito}</b>: <span style='color:#C0392B'>+{int(diff)} nuevos</span> (Total: {int(total_act)})</li>")
+            novedades.append(f"<li><b>{label}</b>: <span style='color:#C0392B'>+{int(diff)} nuevos</span> (Total: {int(total_act)})</li>")
         elif diff < 0:
-            novedades.append(f"<li><b>{delito}</b>: <span style='color:#1A7A4A'>{int(diff)} casos</span> (Total: {int(total_act)})</li>")
+            novedades.append(f"<li><b>{label}</b>: <span style='color:#1A7A4A'>{int(diff)} casos</span> (Total: {int(total_act)})</li>")
             
     if not novedades:
-        return "<p style='color:#606175'><i>No hay cambios numéricos en los totales de los delitos analizados.</i></p>", False
+        return "<p style='color:#606175'><i>No hay cambios numéricos significativos en los datos analizados.</i></p>", False
     
-    return "<p><b>Resumen de novedades detectadas:</b></p><ul>" + "".join(novedades) + "</ul>", True
+    return "<p><b>Novedades detectadas en la base de datos:</b></p><ul>" + "".join(novedades) + "</ul>", True
 
 def main():
     tipo = sys.argv[1].lower().strip() if len(sys.argv) > 1 else "cambio"

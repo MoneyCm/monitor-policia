@@ -36,36 +36,43 @@ CARPETA  = "policia_xlsx"
 SALIDA   = "reporte_policia.pdf"
 ESCUDO   = "escudo_jamundi.png"
 
-# ── Cache de Header ──
-HEADER_POS_CACHE = {}
-
 def _read_excel_smart(path: Path, engine: str) -> pd.DataFrame:
     """Busca la fila de cabecera real en el Excel de la Policía de forma rápida."""
-    # Intentar con la última posición conocida para este tipo de archivo
-    tipo = path.stem[:8] # Prefijo del nombre del archivo
-    skip = HEADER_POS_CACHE.get(tipo, 0)
-    
+    # Intentar primero sin saltar filas
     try:
-        probe = pd.read_excel(path, engine=engine, skiprows=skip, nrows=5)
+        probe = pd.read_excel(path, engine=engine, skiprows=0, nrows=5)
         cols = [str(c).upper() for c in probe.columns]
         if any(cand in cols for cand in ("MUNICIPIO", "CANTIDAD", "FECHA")):
-            return pd.read_excel(path, engine=engine, skiprows=skip)
+            return pd.read_excel(path, engine=engine, skiprows=0)
     except: pass
 
-    # Si falla, buscar en las primeras 15 filas
-    for i in range(0, 15):
+    # Si falla, buscar en las primeras 20 filas (los formatos varían mucho)
+    for i in range(1, 20):
         try:
             probe = pd.read_excel(path, engine=engine, skiprows=i, nrows=5)
             cols = [str(c).upper() for c in probe.columns]
             if any(cand in cols for cand in ("MUNICIPIO", "CANTIDAD", "FECHA")):
-                HEADER_POS_CACHE[tipo] = i
                 return pd.read_excel(path, engine=engine, skiprows=i)
         except: continue
     return pd.read_excel(path, engine=engine)
 
 def _safe_read_excel(path: Path) -> pd.DataFrame:
-    try: return _read_excel_smart(path, engine="openpyxl")
-    except: return _read_excel_smart(path, engine="openpyxl")
+    # Intentar con Calamine (rápido)
+    df = None
+    try:
+        df = _read_excel_smart(path, engine="calamine")
+    except: pass
+    
+    # Validar si calamine trajo el municipio, si no, intentar con openpyxl
+    if df is not None:
+        col_muni = next((c for c in df.columns if "MUNICIPIO" in str(c).upper()), None)
+        if col_muni: return df
+
+    # Re-intentar con Openpyxl como fallback
+    try:
+        return _read_excel_smart(path, engine="openpyxl")
+    except:
+        return None
 
 def _build_fecha_hecho(df: pd.DataFrame):
     col_fecha = next((c for c in df.columns if "FECHA" in str(c).upper()), None)
@@ -286,10 +293,11 @@ def generar_pdf(datos, salida):
     doc.build(h)
     print(f"✅ Reporte generado: {salida}")
     
-    # Exportar totales para comparación en el correo
-    import json, shutil
+    # 2. Resumen para comparación y notificaciones (guardamos ambos años)
     resumen = {}
     for d, df in datos.items():
+        resumen[f"{d}_{anio_act}"] = total_anio(df, anio_act)
+        resumen[f"{d}_{anio_ant}"] = total_anio(df, anio_ant)
         resumen[d] = int(total_anio(df, anio_act, mes_actual))
     
     path_act = Path("resumen_actual.json")
