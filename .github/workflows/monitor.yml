@@ -10,6 +10,7 @@ on:
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
 
@@ -47,6 +48,7 @@ jobs:
           fi
 
       - name: Descargar datos Policia
+        timeout-minutes: 8
         run: python descargar_policia.py
 
       - name: Generar boletin PDF

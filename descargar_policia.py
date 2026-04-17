@@ -72,6 +72,8 @@ def obtener_enlaces_actuales():
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
             page = browser.new_page()
+            page.set_default_timeout(10000)
+            page.set_default_navigation_timeout(20000)
             page.on("response", lambda resp: (
                 enlaces.__setitem__(resp.url, "network_response")
                 if (".xlsx" in resp.url.lower() and "delitos-impacto" in resp.url.lower())
@@ -141,6 +143,8 @@ def obtener_enlaces_actuales():
                 delitos.append(o)
 
             print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
+            total_combinaciones = len(years) * len(delitos)
+            print(f"Combinaciones a evaluar: {total_combinaciones}")
 
             btn_buscar = page.locator("button:has-text('Buscar')").first
             if btn_buscar.count() == 0:
@@ -149,6 +153,7 @@ def obtener_enlaces_actuales():
                 raise RuntimeError("No se encontró botón 'Buscar'.")
 
             # Recorrer combinaciones: año + delito + Buscar
+            procesadas = 0
             for y in years:
                 try:
                     # Reubicar selects en cada iteración (el DOM cambia tras buscar)
@@ -161,6 +166,8 @@ def obtener_enlaces_actuales():
                     continue
 
                 for d in delitos:
+                    procesadas += 1
+                    print(f"[{procesadas}/{total_combinaciones}] {y['label']} | {d['label']}")
                     try:
                         select_delito_live = page.locator("select").nth(idx_delito)
                         if d["value"]:
@@ -169,8 +176,9 @@ def obtener_enlaces_actuales():
                             select_delito_live.select_option(label=d["label"])
 
                         btn_buscar.click()
-                        page.wait_for_timeout(1500)
-                        page.wait_for_load_state("domcontentloaded", timeout=15000)
+                        # Este formulario suele actualizar el DOM sin navegación.
+                        # En Actions, esperar "load_state" por cada clic vuelve el proceso muy lento.
+                        page.wait_for_timeout(1200)
 
                         registrar_enlaces(page, f"{y['label']}|{d['label']}")
                     except Exception:
