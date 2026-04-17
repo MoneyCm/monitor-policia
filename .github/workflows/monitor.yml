@@ -18,6 +18,8 @@ jobs:
       contents: read
     env:
       PYTHONUNBUFFERED: "1"
+      PLAYWRIGHT_TIMEOUT: "90000"
+      PLAYWRIGHT_SLOW_MO: "150"
 
     steps:
       - name: Checkout repositorio
@@ -121,7 +123,7 @@ jobs:
           cp resumen_actual.json .monitor_state/resumen_actual.json
 
       - name: Subir artefactos cuando cambia
-        if: steps.cambios.outputs.changed == 'true'
+        if: steps.cambios.outputs.changed == 'true' || failure()
         uses: actions/upload-artifact@v4
         with:
           name: reporte-policia
@@ -130,3 +132,4 @@ jobs:
             resumen_actual.json
             graf_comp_policia.png
             graf_tend_policia.png
+            fallo_*.png

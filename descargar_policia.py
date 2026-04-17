@@ -184,6 +184,11 @@ def obtener_enlaces_actuales():
             # Usar un contexto con User-Agent realista
             context = browser.new_context(user_agent=HEADERS["User-Agent"], viewport={"width": 1280, "height": 720})
             page = context.new_page()
+            
+            # Timeouts configurables vía entorno
+            TIMEOUT_SCRAPING = int(os.environ.get("PLAYWRIGHT_TIMEOUT", "90000"))
+            page.set_default_timeout(TIMEOUT_SCRAPING)
+            page.set_default_navigation_timeout(TIMEOUT_SCRAPING)
 
             page.on("response", lambda resp: (
                 sys.stderr.write(f"    [DETECTADO] {resp.url}\n") or enlaces.__setitem__(resp.url, "network_response")
@@ -269,6 +274,17 @@ def obtener_enlaces_actuales():
             idx_delito = best_delito["idx"]
             opts_delito = best_delito["opts"]
 
+            # Guardar IDs de los selects para usarlos en el bucle (más estable que el índice)
+            def get_sel_id(idx):
+                s = selects[idx]
+                return s.get_attribute("id") or s.get_attribute("name") or None
+
+            id_anio = get_sel_id(idx_anio)
+            id_delito = get_sel_id(idx_delito)
+            
+            # Selector de botón que capta <button> e <input type="submit">
+            BTN_SELECTOR = "role=button[name='Buscar'i], button:has-text('Buscar'), input[value='Buscar'i]"
+
             # Preparar listas (permiten override por variables de entorno)
             years_allow = _parse_list_env("POLICIA_YEARS")  # ej: "2024,2025"
             delitos_allow = _parse_list_env("POLICIA_DELITOS")  # ej: "Amenazas,Extorsión"
@@ -308,21 +324,17 @@ def obtener_enlaces_actuales():
                 max_delitos_general = int(os.environ.get("POLICIA_DELITOS_MAX", "40"))
                 delitos = _pick_delitos(delitos, max_delitos_general)
 
-            print(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones")
+            sys.stderr.write(f"Selector de años: {len(years)} opciones; selector de delitos: {len(delitos)} opciones\n")
             
-            # Asegurar que el botón es visible antes de empezar
-            btn_buscar = page.locator("button:has-text('Buscar')").first
-            btn_buscar.scroll_into_view_if_needed()
-            if btn_buscar.count() == 0:
-                registrar_enlaces(page, "vista_inicial")
-                browser.close()
-                raise RuntimeError("No se encontró botón 'Buscar'.")
-
             # Recorrer combinaciones: año + delito + Buscar
             for y in years:
                 try:
-                    # Reubicar selects en cada iteración: usar solo los visibles (ignora Translate)
-                    select_anio_live = page.locator("select:visible").nth(idx_anio)
+                    # Reubicar select de año
+                    if id_anio:
+                        select_anio_live = page.locator(f"select[id='{id_anio}'], select[name='{id_anio}']").first
+                    else:
+                        select_anio_live = page.locator("select:visible").nth(idx_anio)
+
                     if y["value"]:
                         select_anio_live.select_option(value=y["value"])
                     else:
@@ -335,25 +347,71 @@ def obtener_enlaces_actuales():
                 for i, d in enumerate(delitos, 1):
                     try:
                         sys.stderr.write(f"   [{i}/{len(delitos)}] Buscando: {d['label']}...\n")
-                        select_delito_live = page.locator("select:visible").nth(idx_delito)
+                        
+                        # Reubicar select de delito
+                        if id_delito:
+                            select_delito_live = page.locator(f"select[id='{id_delito}'], select[name='{id_delito}']").first
+                        else:
+                            select_delito_live = page.locator("select:visible").nth(idx_delito)
+
                         if d["value"]:
                             select_delito_live.select_option(value=d["value"])
                         else:
                             select_delito_live.select_option(label=d["label"])
 
-                        # En Actions, a veces el clic no dispara el evento si es muy rápido
-                        page.wait_for_timeout(500)
-                        btn_buscar.click()
-                        
-                        # Esperar un poco a que la petición de red se lance o el DOM cambie
-                        # No usamos wait_for_load_state("domcontentloaded") porque si es AJAX no lanzará navegación
-                        page.wait_for_timeout(2000)
-                        
+                        # --- click robusto ---
+                        btn_buscar = page.locator(BTN_SELECTOR).first
+                        btn_buscar.wait_for(state="visible", timeout=TIMEOUT_SCRAPING)
+                        btn_buscar.scroll_into_view_if_needed()
+
+                        # Esperar que esté habilitado (polling)
+                        deadline = time.time() + (TIMEOUT_SCRAPING / 1000)
+                        while time.time() < deadline:
+                            try:
+                                if btn_buscar.is_visible() and btn_buscar.is_enabled():
+                                    break
+                            except Exception:
+                                pass
+                            page.wait_for_timeout(300)
+                        else:
+                            raise RuntimeError(f"Botón Buscar no quedó habilitado tras {TIMEOUT_SCRAPING}ms")
+
+                        page.wait_for_timeout(400)
+                        btn_buscar.click(timeout=TIMEOUT_SCRAPING)
+                        page.wait_for_timeout(3000)
                         registrar_enlaces(page, f"{y['label']}|{d['label']}")
+
                     except Exception as e:
-                        print(f"\n   [ERROR] En combinación {y['label']}-{d['label']}: {e}")
+                        sys.stderr.write(f"\n   [ERROR] En combinación {y['label']}-{d['label']}: {e}\n")
+
+                        # Guardar evidencia del fallo
+                        try:
+                            page.screenshot(path=f"fallo_{y['label']}_{i}.png", full_page=True)
+                        except Exception:
+                            pass
+
+                        # Reset fuerte: volver a la página base para limpiar el DOM sucio
+                        try:
+                            page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
+                            page.wait_for_timeout(2000)
+
+                            # Re-seleccionar el año para que el siguiente delito parta de estado limpio
+                            if id_anio:
+                                sel_anio_reset = page.locator(f"select[id='{id_anio}'], select[name='{id_anio}']").first
+                            else:
+                                sel_anio_reset = page.locator("select:visible").nth(idx_anio)
+
+                            if y["value"]:
+                                sel_anio_reset.select_option(value=y["value"])
+                            else:
+                                sel_anio_reset.select_option(label=y["label"])
+
+                            page.wait_for_timeout(1000)
+                        except Exception as reset_err:
+                            sys.stderr.write(f"   [RESET-ERROR] No se pudo resetear la página: {reset_err}\n")
+
                         continue
-                print() # Nueva línea tras terminar los delitos
+                sys.stderr.write("\n")
 
             browser.close()
 
