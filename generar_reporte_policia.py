@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from datetime import datetime
 import json
+import shutil
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
@@ -119,12 +120,12 @@ def leer_datos() -> dict:
     datos = {}
     base = Path(CARPETA)
     datasets_dinamicos = descubrir_datasets()
-    print(f"📊 Procesando {len(datasets_dinamicos)} tipos de delitos...")
+    print(f"Procesando {len(datasets_dinamicos)} tipos de delitos...")
     for nombre, archivos in datasets_dinamicos.items():
         frames = []
         for archivo in archivos:
             try:
-                print(f"  → Cargando {archivo}...")
+                print(f"   Cargando {archivo}...")
                 df = _safe_read_excel(base / archivo)
                 col_muni = next((c for c in df.columns if "MUNICIPIO" in c.upper()), None)
                 if col_muni:
@@ -292,7 +293,7 @@ def generar_pdf(datos, salida):
     h.append(pie)
 
     doc.build(h)
-    print(f"✅ Reporte generado: {salida}")
+    print(f"Reporte generado: {salida}")
     
     # 2. Resumen para comparación y notificaciones (guardamos ambos años)
     resumen = {}

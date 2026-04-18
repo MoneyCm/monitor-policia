@@ -42,7 +42,7 @@ def enviar(asunto: str, cuerpo_html: str):
         s.login(GMAIL_USER, GMAIL_PASS)
         s.sendmail(GMAIL_USER, EMAIL_DEST, msg.as_string())
 
-    print(f"✅ Email enviado: {asunto}")
+    print(f"Email enviado: {asunto}")
 
 
 def html_base(titulo: str, cuerpo: str) -> str:
@@ -74,7 +74,7 @@ def obtener_novedades():
     path_ant = Path("resumen_anterior.json")
     
     if not path_act.exists():
-        return ""
+        return "", False
     
     with open(path_act, "r", encoding="utf-8") as f:
         act = json.load(f)
@@ -116,7 +116,7 @@ def main():
 
     # Si es un monitoreo de rutina (cambio o diario) y no hay cambios, no enviar nada
     if tipo in ["cambio", "diario"] and not hay_cambios:
-        print(f"⏩ Sin cambios detectados. Se omite el envío de correo ({tipo}).")
+        print(f"Sin cambios detectados. Se omite el envío de correo ({tipo}).")
         return
 
     if tipo == "cambio" or tipo == "diario":
