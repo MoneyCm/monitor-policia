@@ -360,53 +360,44 @@ def obtener_enlaces_actuales():
                         else:
                             select_delito_live.select_option(label=d["label"])
 
-                        # --- click robusto ---
-                        # Intentar múltiples selectores comunes para el botón de envío
-                        selectores_btn = [
-                            "button:has-text('Buscar')", 
-                            "button:has-text('Consultar')",
-                            "input[type='submit']",
-                            "input[value*='Buscar'i]",
-                            "input[value*='Consultar'i]",
-                            "#edit-submit",  # ID común en Drupal (usado por la Policía)
-                            ".btn-primary"
-                        ]
+                        # --- click robusto (JS Fallback) ---
+                        # Eliminar posibles bloqueos visuales (Google Translate, Popups)
+                        try:
+                            page.evaluate("""() => {
+                                const elements = document.querySelectorAll('.goog-te-banner-frame, .skiptranslate, #google_translate_element, .modal-backdrop, .modal');
+                                elements.forEach(el => el.remove());
+                                document.body.style.top = '0';
+                            }""")
+                        except: pass
+
+                        # Intentar click mediante JS (más robusto en headless Linux)
+                        clicked = False
+                        try:
+                            # Intentar encontrar y clickear el botón usando JS puro para saltar checks de visibilidad de Playwright
+                            clicked = page.evaluate("""() => {
+                                const selectors = ["button:contains('Buscar')", "input[value*='Buscar']", "#edit-submit", "button:contains('Consultar')", ".btn-primary"];
+                                for (const s of selectors) {
+                                    const el = jQuery ? jQuery(s)[0] : document.querySelector(s);
+                                    if (el) {
+                                        el.click();
+                                        return true;
+                                    }
+                                }
+                                // Fallback: buscar cualquier botón que diga Buscar
+                                const btns = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+                                const target = btns.find(b => (b.innerText || b.value || "").includes("Buscar"));
+                                if (target) { target.click(); return true; }
+                                return false;
+                            }""")
+                        except Exception as e:
+                            sys.stderr.write(f"  [DEBUG] Error en evaluate JS: {e}\n")
+
+                        if not clicked:
+                            # Si JS falla, intentar el click normal de Playwright con fuerza bruta
+                            btn_buscar = page.locator("button:has-text('Buscar'), input[value*='Buscar'i], #edit-submit").first
+                            btn_buscar.click(force=True, timeout=15000)
                         
-                        btn_buscar = None
-                        for sel in selectores_btn:
-                            try:
-                                loc = page.locator(sel).first
-                                if loc.is_visible(timeout=2000):
-                                    btn_buscar = loc
-                                    break
-                            except:
-                                continue
-
-                        if not btn_buscar:
-                            # Si falla, listar botones para depurar
-                            btns = page.query_selector_all("button, input[type='submit'], input[type='button']")
-                            nombres = [ (b.get_attribute("value") or b.inner_text() or "sin-texto").strip() for b in btns]
-                            sys.stderr.write(f"  [DEBUG] Botones encontrados: {nombres}\n")
-                            btn_buscar = page.locator("button:has-text('Buscar')").or_(page.locator("input[value*='Buscar'i]")).first
-
-                        btn_buscar.wait_for(state="visible", timeout=TIMEOUT_SCRAPING)
-                        btn_buscar.scroll_into_view_if_needed()
-
-                        # Esperar que esté habilitado (polling)
-                        deadline = time.time() + (TIMEOUT_SCRAPING / 1000)
-                        while time.time() < deadline:
-                            try:
-                                if btn_buscar.is_visible() and btn_buscar.is_enabled():
-                                    break
-                            except Exception:
-                                pass
-                            page.wait_for_timeout(300)
-                        else:
-                            raise RuntimeError(f"Botón Buscar no quedó habilitado tras {TIMEOUT_SCRAPING}ms")
-
-                        page.wait_for_timeout(400)
-                        btn_buscar.click(timeout=TIMEOUT_SCRAPING)
-                        page.wait_for_timeout(3000)
+                        page.wait_for_timeout(4000)
                         registrar_enlaces(page, f"{y['label']}|{d['label']}")
 
                     except Exception as e:
