@@ -361,8 +361,34 @@ def obtener_enlaces_actuales():
                             select_delito_live.select_option(label=d["label"])
 
                         # --- click robusto ---
-                        # Usamos .or_() para evitar el error de sintaxis con selectores múltiples no estándar
-                        btn_buscar = page.locator("button:has-text('Buscar')").or_(page.locator("input[value='Buscar'i]")).or_(page.get_by_role("button", name="Buscar", exact=True)).first
+                        # Intentar múltiples selectores comunes para el botón de envío
+                        selectores_btn = [
+                            "button:has-text('Buscar')", 
+                            "button:has-text('Consultar')",
+                            "input[type='submit']",
+                            "input[value*='Buscar'i]",
+                            "input[value*='Consultar'i]",
+                            "#edit-submit",  # ID común en Drupal (usado por la Policía)
+                            ".btn-primary"
+                        ]
+                        
+                        btn_buscar = None
+                        for sel in selectores_btn:
+                            try:
+                                loc = page.locator(sel).first
+                                if loc.is_visible(timeout=2000):
+                                    btn_buscar = loc
+                                    break
+                            except:
+                                continue
+
+                        if not btn_buscar:
+                            # Si falla, listar botones para depurar
+                            btns = page.query_selector_all("button, input[type='submit'], input[type='button']")
+                            nombres = [ (b.get_attribute("value") or b.inner_text() or "sin-texto").strip() for b in btns]
+                            sys.stderr.write(f"  [DEBUG] Botones encontrados: {nombres}\n")
+                            btn_buscar = page.locator("button:has-text('Buscar')").or_(page.locator("input[value*='Buscar'i]")).first
+
                         btn_buscar.wait_for(state="visible", timeout=TIMEOUT_SCRAPING)
                         btn_buscar.scroll_into_view_if_needed()
 
