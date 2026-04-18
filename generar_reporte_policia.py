@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import json
 import shutil
+import unicodedata
 from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
@@ -37,6 +38,15 @@ MUNICIPIO_FILTRO = "Jamundí"
 CARPETA  = "policia_xlsx"
 SALIDA   = "reporte_policia.pdf"
 ESCUDO   = "escudo_jamundi.png"
+
+def _norm_text(s):
+    """Normaliza texto para comparación (quita tildes y espacios)."""
+    if not isinstance(s, str): return str(s)
+    s = s.strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(ch for ch in s if not unicodedata.combining(ch))
+
+MUNICIPIO_NORM = _norm_text(MUNICIPIO_FILTRO)
 
 def _read_excel_smart(path: Path, engine: str) -> pd.DataFrame:
     """Busca la fila de cabecera real en el Excel de la Policía de forma rápida."""
@@ -125,22 +135,35 @@ def leer_datos() -> dict:
         frames = []
         for archivo in archivos:
             try:
-                print(f"   Cargando {archivo}...")
                 df = _safe_read_excel(base / archivo)
-                col_muni = next((c for c in df.columns if "MUNICIPIO" in c.upper()), None)
+                if df is None or df.empty: continue
+                
+                col_muni = next((c for c in df.columns if "MUNICIPIO" in str(c).upper()), None)
                 if col_muni:
-                    df = df[df[col_muni].astype(str).str.strip().str.lower() == MUNICIPIO_FILTRO.lower()].copy()
+                    # Filtrado insensible a tildes
+                    mask = df[col_muni].apply(lambda x: _norm_text(str(x)) == MUNICIPIO_NORM)
+                    df = df[mask].copy()
+                
+                if df.empty: continue
+                
                 df["FECHA_HECHO"] = _build_fecha_hecho(df)
                 df = df.dropna(subset=["FECHA_HECHO"])
+                if df.empty: continue
+
                 df["ANIO"] = df["FECHA_HECHO"].dt.year
                 df["MES"]  = df["FECHA_HECHO"].dt.month
-                col_cant = next((c for c in df.columns if "CANTIDAD" in c.upper()), None)
+                col_cant = next((c for c in df.columns if "CANTIDAD" in str(c).upper()), None)
                 df["col_cantidad"] = pd.to_numeric(df[col_cant], errors="coerce").fillna(0) if col_cant else 0
                 frames.append(df)
-            except: pass
+            except Exception as e:
+                print(f"      Error procesando {archivo}: {e}")
+        
         if frames: 
             datos[nombre] = pd.concat(frames, ignore_index=True)
-            print(f"  [OK] {nombre}: {len(datos[nombre])} registros filtrados")
+            print(f"  [OK] {nombre}: {len(datos[nombre])} registros para {MUNICIPIO_FILTRO}")
+    
+    if not datos:
+        print(f"⚠️ ATENCIÓN: No se encontraron registros para '{MUNICIPIO_FILTRO}' en ningún archivo.")
     return datos
 
 # ── Cálculos ──
