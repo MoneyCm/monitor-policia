@@ -329,36 +329,34 @@ def obtener_enlaces_actuales():
             
             # Recorrer combinaciones: año + delito + Buscar
             for y in years:
-                try:
-                    # Reubicar select de año
-                    if id_anio:
-                        select_anio_live = page.locator(f"select[id='{id_anio}'], select[name='{id_anio}']").first
-                    else:
-                        select_anio_live = page.locator("select:visible").nth(idx_anio)
-
-                    if y["value"]:
-                        select_anio_live.select_option(value=y["value"])
-                    else:
-                        select_anio_live.select_option(label=y["label"])
-                except Exception as e:
-                    sys.stderr.write(f"  [ERROR] Fallo al seleccionar año {y['label']}: {e}\n")
-                    continue
-
                 sys.stderr.write(f"-> Año: {y['label']}\n")
+                
                 for i, d in enumerate(delitos, 1):
                     try:
-                        sys.stderr.write(f"   [{i}/{len(delitos)}] Buscando: {d['label']}...\n")
-                        
-                        # Reubicar select de delito
-                        if id_delito:
-                            select_delito_live = page.locator(f"select[id='{id_delito}'], select[name='{id_delito}']").first
-                        else:
-                            select_delito_live = page.locator("select:visible").nth(idx_delito)
+                        # REINICIO TOTAL: Cargar la página en cada iteración para asegurar limpieza
+                        sys.stderr.write(f"   [{i}/{len(delitos)}] Preparando: {d['label']}...\n")
+                        page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
+                        page.wait_for_timeout(2000)
 
-                        if d["value"]:
-                            select_delito_live.select_option(value=d["value"])
+                        # Re-seleccionar Año (necesario por el reinicio de página)
+                        if id_anio:
+                            sel_anio = page.locator(f"select[id='{id_anio}'], select[name='{id_anio}']").first
                         else:
-                            select_delito_live.select_option(label=d["label"])
+                            sel_anio = page.locator("select:visible").nth(idx_anio)
+                        
+                        if y["value"]: sel_anio.select_option(value=y["value"])
+                        else: sel_anio.select_option(label=y["label"])
+                        page.wait_for_timeout(1000)
+
+                        # Seleccionar Delito
+                        if id_delito:
+                            sel_delito = page.locator(f"select[id='{id_delito}'], select[name='{id_delito}']").first
+                        else:
+                            sel_delito = page.locator("select:visible").nth(idx_delito)
+
+                        if d["value"]: sel_delito.select_option(value=d["value"])
+                        else: sel_delito.select_option(label=d["label"])
+                        page.wait_for_timeout(1000)
 
                         # --- click robusto (JS Fallback) ---
                         # Eliminar posibles bloqueos visuales (Google Translate, Popups)
@@ -408,27 +406,6 @@ def obtener_enlaces_actuales():
                             page.screenshot(path=f"fallo_{y['label']}_{i}.png", full_page=True)
                         except Exception:
                             pass
-
-                        # Reset fuerte: volver a la página base para limpiar el DOM sucio
-                        try:
-                            page.goto(URL_WEB, wait_until="domcontentloaded", timeout=60000)
-                            page.wait_for_timeout(2000)
-
-                            # Re-seleccionar el año para que el siguiente delito parta de estado limpio
-                            if id_anio:
-                                sel_anio_reset = page.locator(f"select[id='{id_anio}'], select[name='{id_anio}']").first
-                            else:
-                                sel_anio_reset = page.locator("select:visible").nth(idx_anio)
-
-                            if y["value"]:
-                                sel_anio_reset.select_option(value=y["value"])
-                            else:
-                                sel_anio_reset.select_option(label=y["label"])
-
-                            page.wait_for_timeout(1000)
-                        except Exception as reset_err:
-                            sys.stderr.write(f"   [RESET-ERROR] No se pudo resetear la página: {reset_err}\n")
-
                         continue
                 sys.stderr.write("\n")
 
