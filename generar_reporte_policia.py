@@ -163,7 +163,7 @@ def leer_datos() -> dict:
             print(f"  [OK] {nombre}: {len(datos[nombre])} registros para {MUNICIPIO_FILTRO}")
     
     if not datos:
-        print(f"⚠️ ATENCIÓN: No se encontraron registros para '{MUNICIPIO_FILTRO}' en ningún archivo.")
+        print(f"[ATENCION] No se encontraron registros para '{MUNICIPIO_FILTRO}' en ningún archivo.")
     return datos
 
 # ── Cálculos ──
@@ -328,11 +328,11 @@ def generar_pdf(datos, salida):
     path_act = Path("resumen_actual.json")
     if path_act.exists():
         shutil.copy(path_act, "resumen_anterior.json")
-        print("🔄 Estado anterior rotado a resumen_anterior.json")
+        print("[INFO] Estado anterior rotado a resumen_anterior.json")
 
     with open(path_act, "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=2)
-    print("📊 Totales exportados a resumen_actual.json")
+    print("[INFO] Totales exportados a resumen_actual.json")
 
 if __name__ == "__main__":
     d = leer_datos()
