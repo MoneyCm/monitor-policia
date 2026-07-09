@@ -13,15 +13,19 @@ from email import encoders
 from datetime import datetime
 from pathlib import Path
 
-GMAIL_USER = os.environ["GMAIL_USER"]
-GMAIL_PASS = os.environ["GMAIL_PASS"]
-EMAIL_DEST = os.environ["EMAIL_DEST"]
+GMAIL_USER = os.environ.get("GMAIL_USER")
+GMAIL_PASS = os.environ.get("GMAIL_PASS") or os.environ.get("GMAIL_APP_PASSWORD")
+EMAIL_DEST = os.environ.get("EMAIL_DEST") or GMAIL_USER
 PDF_PATH   = "reporte_policia.pdf"
 
 MESES_ES = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
             "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 def enviar(asunto: str, cuerpo_html: str):
+    if not GMAIL_USER or not GMAIL_PASS:
+        print("Aviso: Faltan las credenciales GMAIL_USER o GMAIL_PASS. Se omite el envío de correo.")
+        return
+
     msg = MIMEMultipart("mixed")
     msg["From"]    = GMAIL_USER
     msg["To"]      = EMAIL_DEST
@@ -46,23 +50,51 @@ def enviar(asunto: str, cuerpo_html: str):
 
 
 def html_base(titulo: str, cuerpo: str) -> str:
+    import hashlib
+    sha_pdf = "N/A"
+    if Path(PDF_PATH).exists():
+        try:
+            sha256_hash = hashlib.sha256()
+            with open(PDF_PATH, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            sha_pdf = sha256_hash.hexdigest()
+        except Exception as e:
+            print(f"Error calculando SHA256: {e}")
+
     return f"""
-    <html><body style="font-family:Arial,sans-serif;color:#1A1A2E;max-width:640px;margin:auto">
-      <div style="background:#281FD0;padding:18px 24px;border-bottom:4px solid #FFE000">
-        <h2 style="color:white;margin:0;font-size:16px">🚔 OBSERVATORIO DEL DELITO — POLICÍA NACIONAL</h2>
-        <p style="color:#c0c8ff;margin:4px 0 0;font-size:12px">Alcaldía de Jamundí · Secretaría de Seguridad y Convivencia</p>
+    <html>
+    <body style="font-family:'Segoe UI',Arial,sans-serif;color:#1A1A2E;max-width:640px;margin:auto;background-color:#f4f4f8;padding:20px;">
+      <div style="background:#281FD0;padding:24px 28px;border-bottom:4px solid #FFE000;border-radius:6px 6px 0 0;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+        <div style="font-size:10px;color:#FFE000;letter-spacing:2px;font-weight:bold;text-transform:uppercase;">Alcaldía de Jamundí · Valle del Cauca</div>
+        <h2 style="color:white;margin:6px 0 0;font-size:18px;">🚔 OBSERVATORIO DEL DELITO — POLICÍA NACIONAL</h2>
+        <p style="color:rgba(255,255,255,.75);margin:4px 0 0;font-size:12px;">Monitoreo de Estadística Delictiva Oficial</p>
       </div>
-      <div style="padding:20px 24px;background:#f9f9fd">
-        <h3 style="color:#281FD0">{titulo}</h3>
+      <div style="padding:28px;background:white;border-radius:0 0 6px 6px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+        <h3 style="color:#281FD0;margin-top:0;font-size:15px;text-transform:uppercase;">{titulo}</h3>
         {cuerpo}
+        
+        <!-- Caja de Integridad del Reporte -->
+        <div style="margin-top:24px;padding:12px 16px;background:#fffde7;border-left:4px solid #FFE000;font-size:11px;color:#555566;border-radius:4px;">
+          <b>Integridad del Reporte (Archivo PDF Adjunto):</b><br>
+          SHA256 Checksum: <code style="font-size:10px;font-family:monospace;color:#281FD0;">{sha_pdf}</code>
+        </div>
+        
+        <!-- Firma Profesional del Elaborador -->
+        <div style="margin-top:30px;border-top:1px solid #e1e2eb;padding-top:15px;">
+          <p style="margin:0;font-size:13px;font-weight:bold;color:#281FD0;">Elaborado por:</p>
+          <p style="margin:4px 0 0;font-size:12px;color:#444455;line-height:1.4;">
+            <b>César Alfonso Forero Molano</b><br>
+            Profesional Secretaría de Seguridad y Convivencia<br>
+            Alcaldía de Jamundí
+          </p>
+        </div>
       </div>
-      <div style="background:#281FD0;padding:10px 24px;border-top:3px solid #FFE000">
-        <p style="color:#c0c8ff;font-size:11px;margin:0">
-          Fuente: Policía Nacional / DIJIN · Municipio Jamundí (76364) ·
-          Generado automáticamente vía GitHub Actions
-        </p>
+      <div style="background:#f8f9fa;padding:14px;text-align:center;font-size:11px;color:#999;border-top:1px solid #eee;border-radius:0 0 6px 6px;margin-top:15px;">
+        Fuente: Policía Nacional / DIJIN · Municipio Jamundí (76364) · Generado automáticamente vía GitHub Actions
       </div>
-    </body></html>
+    </body>
+    </html>
     """
 
 

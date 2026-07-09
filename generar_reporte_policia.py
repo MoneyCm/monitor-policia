@@ -309,8 +309,16 @@ def generar_pdf(datos, salida):
     h.append(Spacer(1, 0.15*cm))
     h.append(Image(grafica_tendencia(datos, fecha_max), width=W, height=W*0.35))
 
+    # Firma Profesional
+    h.append(Spacer(1, 0.5*cm))
+    style_firma = ParagraphStyle('FirmaPol', parent=ParagraphStyle('FirmaPolB', fontSize=9.5, leading=12), alignment=TA_CENTER)
+    h.append(Paragraph("<b>Elaborado por:</b>", style_firma))
+    h.append(Paragraph("César Alfonso Forero Molano", style_firma))
+    h.append(Paragraph("Profesional Secretaría de Seguridad y Convivencia", style_firma))
+    h.append(Spacer(1, 0.5*cm))
+
     # Pie
-    h.append(Spacer(1, 0.6*cm))
+    h.append(Spacer(1, 0.4*cm))
     pie = Table([[P("ALCALDÍA DE JAMUNDÍ — SECRETARÍA DE SEGURIDAD Y CONVIVENCIA", 7.5, True, colors.white, TA_CENTER)], [P("Fuente: Policía Nacional / DIJIN · Municipio: Jamundí (76364) · Generado automáticamente vía GitHub Actions", 7, False, colors.white, TA_CENTER)]], colWidths=[W])
     pie.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),AZUL), ('ROWPADDING',(0,0),(-1,-1),7), ('LINEABOVE',(0,0),(-1,0),3,AMARILLO)]))
     h.append(pie)
