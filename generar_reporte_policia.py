@@ -39,6 +39,29 @@ CARPETA  = "policia_xlsx"
 SALIDA   = "reporte_policia.pdf"
 ESCUDO   = "escudo_jamundi.png"
 
+OFFICIAL_FILE_PATTERN = "registro_delitos_*.xlsx"
+JAMUNDI_DANE = "76364"
+CRIME_PATTERNS = (
+    (("HOMICIDIO CULPOSO", "ACCIDENTE"), "Homicidios en transito"),
+    (("LESIONES CULPOSAS", "ACCIDENTE"), "Lesiones en transito"),
+    (("HURTO PERSONAS",), "Hurto a personas"),
+    (("HURTO RESIDENCIAS",), "Hurto a residencias"),
+    (("HURTO ENTIDADES COMERCIALES",), "Hurto a comercio"),
+    (("HURTO COMERCIO",), "Hurto a comercio"),
+    (("HURTO AUTOMOTORES",), "Hurto de automotores"),
+    (("HURTO MOTOCICLETAS",), "Hurto de motocicletas"),
+    (("LESIONES PERSONALES",), "Lesiones personales"),
+    (("VIOLENCIA INTRAFAMILIAR",), "Violencia intrafamiliar"),
+    (("DELITOS SEXUALES",), "Delitos sexuales"),
+    (("HOMICIDIO",), "Homicidios"),
+    (("AMENAZAS",), "Amenazas"),
+    (("EXTORSION",), "Extorsion"),
+    (("SECUESTRO",), "Secuestro"),
+    (("TERRORISMO",), "Terrorismo"),
+    (("ABIGEATO",), "Abigeato"),
+    (("PIRATERIA",), "Pirateria terrestre"),
+)
+
 def _norm_text(s):
     """Normaliza texto para comparación (quita tildes y espacios)."""
     if not isinstance(s, str): return str(s)
@@ -47,6 +70,23 @@ def _norm_text(s):
     return "".join(ch for ch in s if not unicodedata.combining(ch))
 
 MUNICIPIO_NORM = _norm_text(MUNICIPIO_FILTRO)
+
+
+def _crime_label(value):
+    normalized = _norm_text(str(value)).upper()
+    article_match = re.search(r"ARTICULO\s+(\d+)", normalized)
+    if article_match and 205 <= int(article_match.group(1)) <= 219:
+        return "Delitos sexuales"
+    for tokens, label in CRIME_PATTERNS:
+        if all(token in normalized for token in tokens):
+            return label
+    return None
+
+
+def _jamundi_dane_mask(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce").astype("Int64")
+    codes = numeric.astype(str).replace("<NA>", "")
+    return codes.str.zfill(5).str[:5] == JAMUNDI_DANE
 
 def _read_excel_smart(path: Path, engine: str) -> pd.DataFrame:
     """Busca la fila de cabecera real en el Excel de la Policía de forma rápida."""
@@ -85,6 +125,14 @@ def _safe_read_excel(path: Path) -> pd.DataFrame:
         return _read_excel_smart(path, engine="openpyxl")
     except:
         return None
+
+
+def _read_official_excel(path: Path) -> pd.DataFrame:
+    """Read the documented record-level layout (header on Excel row 12)."""
+    try:
+        return pd.read_excel(path, engine="calamine", skiprows=11)
+    except Exception:
+        return pd.read_excel(path, engine="openpyxl", skiprows=11)
 
 def _build_fecha_hecho(df: pd.DataFrame):
     col_fecha = next((c for c in df.columns if "FECHA" in str(c).upper()), None)
@@ -126,9 +174,65 @@ def descubrir_datasets():
         datasets[nombre_limpio].append(arc.name)
     return datasets
 
+
+def leer_datos_oficiales(archivos) -> dict:
+    frames_by_crime = {}
+    print(f"Procesando {len(archivos)} archivos oficiales consolidados...")
+    for path in sorted(archivos):
+        try:
+            df = _read_official_excel(path)
+            if df is None or df.empty:
+                continue
+            col_dane = next(
+                (column for column in df.columns if "DANE" in str(column).upper()),
+                None,
+            )
+            col_crime = next(
+                (column for column in df.columns if "DELITO" in str(column).upper()),
+                None,
+            )
+            if col_dane is None or col_crime is None:
+                raise ValueError("El archivo no contiene las columnas DANE y DELITOS.")
+
+            df = df[_jamundi_dane_mask(df[col_dane])].copy()
+            if df.empty:
+                continue
+            df["FECHA_HECHO"] = _build_fecha_hecho(df)
+            df = df.dropna(subset=["FECHA_HECHO"])
+            df["ANIO"] = df["FECHA_HECHO"].dt.year
+            df["MES"] = df["FECHA_HECHO"].dt.month
+            amount_column = next(
+                (column for column in df.columns if "CANTIDAD" in str(column).upper()),
+                None,
+            )
+            df["col_cantidad"] = (
+                pd.to_numeric(df[amount_column], errors="coerce").fillna(0)
+                if amount_column is not None
+                else 1
+            )
+            df["categoria_sisc"] = df[col_crime].map(_crime_label)
+            df = df.dropna(subset=["categoria_sisc"])
+            for crime, group in df.groupby("categoria_sisc"):
+                frames_by_crime.setdefault(crime, []).append(group.copy())
+            print(f"  [OK] {path.name}: {len(df)} registros priorizados de Jamundi")
+        except Exception as error:
+            print(f"  [ERROR] {path.name}: {error}")
+
+    return {
+        crime: pd.concat(frames, ignore_index=True)
+        for crime, frames in frames_by_crime.items()
+        if frames
+    }
+
 def leer_datos() -> dict:
     datos = {}
     base = Path(CARPETA)
+    official_files = list(base.glob(OFFICIAL_FILE_PATTERN)) if base.exists() else []
+    if len(official_files) >= 2:
+        datos = leer_datos_oficiales(official_files)
+        if datos:
+            return datos
+        print("[ATENCION] Los archivos oficiales no produjeron indicadores; usando respaldo legado.")
     datasets_dinamicos = descubrir_datasets()
     print(f"Procesando {len(datasets_dinamicos)} tipos de delitos...")
     for nombre, archivos in datasets_dinamicos.items():
@@ -341,6 +445,22 @@ def generar_pdf(datos, salida):
     with open(path_act, "w", encoding="utf-8") as f:
         json.dump(resumen, f, ensure_ascii=False, indent=2)
     print("[INFO] Totales exportados a resumen_actual.json")
+
+    source_status = {
+        "source_cutoff_date": fecha_max.date().isoformat(),
+        "period_label": f"Corte al {fecha_max.date().isoformat()} - {len(datos)} indicadores",
+        "record_count": int(
+            sum(total_anio(df, anio_act, mes_actual) for df in datos.values())
+        ),
+        "indicator_count": len(datos),
+        "current_year": anio_act,
+        "previous_year": anio_ant,
+    }
+    Path("source_status.json").write_text(
+        json.dumps(source_status, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+    print("[INFO] Estado de fuente exportado a source_status.json")
 
 if __name__ == "__main__":
     d = leer_datos()

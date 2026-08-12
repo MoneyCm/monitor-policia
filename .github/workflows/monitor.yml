@@ -2,10 +2,14 @@ name: Monitor Policia Nacional - Jamundi
 
 on:
   schedule:
-    - cron: "0 12 * * *"
-    - cron: "0 23 * * 2"
-    - cron: "0 23 * * 5"
+    - cron: "29 12 * * *" # Revision ligera diaria, 07:29 America/Bogota
   workflow_dispatch:
+    inputs:
+      notify:
+        description: "Enviar correo si se detectan cambios"
+        required: false
+        default: false
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -13,13 +17,15 @@ env:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
+    concurrency:
+      group: monitor-policia-nacional
+      cancel-in-progress: false
     permissions:
       contents: read
+      id-token: write
     env:
       PYTHONUNBUFFERED: "1"
-      PLAYWRIGHT_TIMEOUT: "90000"
-      PLAYWRIGHT_SLOW_MO: "150"
 
     steps:
       - name: Checkout repositorio
@@ -29,26 +35,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: "pip"
 
-      - name: Instalar dependencias
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Instalar Chromium para Playwright
-        run: python -m playwright install --with-deps chromium
+      - name: Instalar dependencia de revision ligera
+        run: pip install requests
 
       - name: Calcular fingerprint remoto
         id: fp
         shell: bash
         env:
           PYTHONUNBUFFERED: "1"
-          POLICIA_FP_MODE: "1"
-          POLICIA_FP_DELITOS_MAX: "12"
-          POLICIA_FP_WORKERS: "10"
-          POLICIA_FP_TIMEOUT: "8"
         run: |
-          python descargar_policia.py --fingerprint | tee fp.out
+          python official_policia_source.py --fingerprint | tee fp.out
           FP="$(tail -n 1 fp.out)"
           echo "hash=$FP" >> "$GITHUB_OUTPUT"
           echo "Fingerprint: $FP"
@@ -88,32 +86,32 @@ jobs:
             cp .monitor_state/resumen_actual.json resumen_anterior.json
           fi
 
-      - name: Descargar datos Policia
+      - name: Instalar dependencias de procesamiento
         if: steps.cambios.outputs.changed == 'true'
-        timeout-minutes: 25
-        env:
-          # Limita el espacio de combinaciones en Actions (la pagina a veces lista 200+ delitos).
-          POLICIA_DELITOS_MAX: "40"
-          # Puedes fijar una lista exacta (coma-separada) si quieres 100% determinismo:
-          # POLICIA_DELITOS: "Amenazas,Delitos sexuales,Extorsión,Homicidios,Hurto a personas,Hurto a residencias,Hurto de automotores,Hurto de motocicletas,Lesiones personales,Violencia intrafamiliar,Secuestro,Terrorismo,Piratería terrestre,Abigeato"
-        run: python descargar_policia.py
+        run: pip install -r requirements.txt
+
+      - name: Descargar archivos oficiales consolidados
+        if: steps.cambios.outputs.changed == 'true'
+        timeout-minutes: 12
+        run: python official_policia_source.py --download
 
       - name: Generar boletin PDF
         if: steps.cambios.outputs.changed == 'true'
         run: python generar_reporte_policia.py
 
       - name: Notificar por correo si hubo cambios
-        if: steps.cambios.outputs.changed == 'true'
+        if: steps.cambios.outputs.changed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.notify == true)
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
           EMAIL_DEST: ${{ secrets.EMAIL_DEST }}
         shell: bash
         run: |
-          TIPO="diario"
-          if [[ "${{ github.event.schedule }}" == "0 23 * * 2" ]]; then TIPO="planificacion"; fi
-          if [[ "${{ github.event.schedule }}" == "0 23 * * 5" ]]; then TIPO="consejo"; fi
-          python notificar_policia.py "$TIPO"
+          python notificar_policia.py cambio
+
+      - name: Registrar revision sin cambios
+        if: steps.cambios.outputs.changed != 'true'
+        run: echo "Sin cambios remotos; no se descargaron archivos ni se envio correo."
 
       - name: Guardar nuevo estado
         if: steps.cambios.outputs.changed == 'true' && hashFiles('resumen_actual.json') != ''
@@ -121,6 +119,16 @@ jobs:
         run: |
           mkdir -p .monitor_state
           cp resumen_actual.json .monitor_state/resumen_actual.json
+          cp source_status.json .monitor_state/source_status.json
+
+      - name: Reportar estado al Centro de fuentes SISC
+        if: always()
+        continue-on-error: true
+        env:
+          SISC_API_URL: "https://sisc-backend.onrender.com/api"
+          SISC_MONITOR_OUTCOME: ${{ job.status }}
+          DATA_CHANGED: ${{ steps.cambios.outputs.changed }}
+        run: python sisc_heartbeat.py
 
       - name: Subir artefactos cuando cambia
         if: steps.cambios.outputs.changed == 'true' || failure()
@@ -130,6 +138,7 @@ jobs:
           path: |
             reporte_policia.pdf
             resumen_actual.json
+            source_status.json
             graf_comp_policia.png
             graf_tend_policia.png
             fallo_*.png
