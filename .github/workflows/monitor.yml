@@ -5,6 +5,11 @@ on:
     - cron: "29 12 * * *" # Revision ligera diaria, 07:29 America/Bogota
   workflow_dispatch:
     inputs:
+      force_process:
+        description: "Forzar descarga y procesamiento aunque la huella no cambie"
+        required: false
+        default: false
+        type: boolean
       notify:
         description: "Enviar correo si se detectan cambios"
         required: false
@@ -66,7 +71,7 @@ jobs:
         id: cambios
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_process }}" = "true" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
