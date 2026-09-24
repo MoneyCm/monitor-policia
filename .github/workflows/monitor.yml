@@ -147,3 +147,12 @@ jobs:
             graf_comp_policia.png
             graf_tend_policia.png
             fallo_*.png
+
+      - name: Conservar reporte SISC para sincronizacion local
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sisc-heartbeat
+          path: sisc-heartbeat.json
+          if-no-files-found: warn
+          retention-days: 30
