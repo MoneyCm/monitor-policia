@@ -41,20 +41,22 @@ ESCUDO   = "escudo_jamundi.png"
 
 OFFICIAL_FILE_PATTERN = "registro_delitos_*.xlsx"
 JAMUNDI_DANE = "76364"
+# Tokens sueltos (no frases): desde 2026 la Policía usa la clasificación ICCS, p. ej.
+# "(05022) Hurto a personas" o "(10321) Homicidio por tránsito vehicular", en vez de "HURTO PERSONAS".
 CRIME_PATTERNS = (
     (("HOMICIDIO CULPOSO", "ACCIDENTE"), "Homicidios en transito"),
+    (("HOMICIDIO", "TRANSITO"), "Homicidios en transito"),
     (("LESIONES CULPOSAS", "ACCIDENTE"), "Lesiones en transito"),
-    (("HURTO PERSONAS",), "Hurto a personas"),
-    (("HURTO RESIDENCIAS",), "Hurto a residencias"),
-    (("HURTO ENTIDADES COMERCIALES",), "Hurto a comercio"),
-    (("HURTO COMERCIO",), "Hurto a comercio"),
-    (("HURTO AUTOMOTORES",), "Hurto de automotores"),
-    (("HURTO MOTOCICLETAS",), "Hurto de motocicletas"),
+    (("HURTO", "PERSONAS"), "Hurto a personas"),
+    (("HURTO", "RESIDENCIA"), "Hurto a residencias"),
+    (("HURTO", "COMERCI"), "Hurto a comercio"),
+    (("HURTO", "MOTOCICLETA"), "Hurto de motocicletas"),
+    (("HURTO", "AUTOMOTOR"), "Hurto de automotores"),
     (("LESIONES PERSONALES",), "Lesiones personales"),
     (("VIOLENCIA INTRAFAMILIAR",), "Violencia intrafamiliar"),
     (("DELITOS SEXUALES",), "Delitos sexuales"),
     (("HOMICIDIO",), "Homicidios"),
-    (("AMENAZAS",), "Amenazas"),
+    (("AMENAZA",), "Amenazas"),
     (("EXTORSION",), "Extorsion"),
     (("SECUESTRO",), "Secuestro"),
     (("TERRORISMO",), "Terrorismo"),
@@ -138,8 +140,13 @@ def _build_fecha_hecho(df: pd.DataFrame):
     col_fecha = next((c for c in df.columns if "FECHA" in str(c).upper()), None)
     if col_fecha:
         serie = df[col_fecha]
+        texto = serie.astype(str).str.strip()
         if pd.api.types.is_numeric_dtype(serie):
             fecha = pd.to_datetime(serie, unit="D", origin="1899-12-30", errors="coerce")
+        elif texto.str.match(r"^\d{4}[/-]\d{1,2}[/-]\d{1,2}").mean() > 0.9:
+            # "2025/01/13" es año/mes/día. Leerlo con dayfirst convertía el 05/01 en 1 de mayo
+            # y descartaba los días mayores a 12 (mes 13 inválido).
+            fecha = pd.to_datetime(texto.str.slice(0, 10).str.replace("-", "/"), format="%Y/%m/%d", errors="coerce")
         else:
             fecha = pd.to_datetime(serie, dayfirst=True, errors="coerce")
             if fecha.notna().sum() == 0:
@@ -183,8 +190,9 @@ def leer_datos_oficiales(archivos) -> dict:
             df = _read_official_excel(path)
             if df is None or df.empty:
                 continue
+            # 2026: "CÓDIGO DANE" pasó a llamarse "CÓDIGO DIVIPOLA" (es el mismo código de municipio).
             col_dane = next(
-                (column for column in df.columns if "DANE" in str(column).upper()),
+                (column for column in df.columns if any(key in str(column).upper() for key in ("DANE", "DIVIPOLA"))),
                 None,
             )
             col_crime = next(
@@ -192,7 +200,7 @@ def leer_datos_oficiales(archivos) -> dict:
                 None,
             )
             if col_dane is None or col_crime is None:
-                raise ValueError("El archivo no contiene las columnas DANE y DELITOS.")
+                raise ValueError("El archivo no contiene las columnas de codigo de municipio (DANE/DIVIPOLA) y DELITOS.")
 
             df = df[_jamundi_dane_mask(df[col_dane])].copy()
             if df.empty:
